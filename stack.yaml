@@ -1,0 +1,12 @@
+flags:
+  vty-ui:
+    demos: true
+packages:
+  - '.'
+extra-deps:
+  - charsetdetect-ae-1.0.1
+  - time-1.5
+  - vty-5.2.9
+  - vty-ui-1.9
+  - yi-rope-0.7.0.1
+resolver: lts-2.16

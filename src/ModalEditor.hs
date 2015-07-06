@@ -10,6 +10,8 @@ import Graphics.Vty.Widgets.All hiding (applyEdit)
 import qualified Graphics.Vty.Widgets.Edit as E
 import qualified Graphics.Vty.Widgets.TextZipper as Z
 
+import Commander
+
 type KeyHandler = Widget ModalEdit -> Key -> [Modifier] -> IO Bool
 
 data EditMode = NormalMode | InsertMode
@@ -20,7 +22,7 @@ data ModalEdit = ModalEdit {
     insertKeyHandler :: KeyHandler,
     mode :: EditMode,
     editor :: Widget Edit,
-    commandEditor :: Widget Edit
+    commander :: Widget CommandEdit
 }
 
 instance Show ModalEdit where
@@ -44,7 +46,7 @@ normalKeyHandler_ this key mod =
         (KChar '^', []) -> doEdit Z.gotoBOL
         (KChar 'x', []) -> doEdit Z.deleteChar
         (KChar 'X', []) -> doEdit Z.deletePrevChar
-        (KChar ':', []) -> (getCommandEditor >=> focus) this >> return True
+        (KChar ':', []) -> (getCommander >=> focus) this >> return True
         _ -> return False
   where
     doEdit f = applyEdit f this >> return True
@@ -63,8 +65,8 @@ getEditor = (editor <~~)
 getEditor' :: ModalEdit -> IO (Widget Edit)
 getEditor' this = return $ editor this
 
-getCommandEditor :: Widget ModalEdit -> IO (Widget Edit)
-getCommandEditor = (commandEditor <~~)
+getCommander :: Widget ModalEdit -> IO (Widget CommandEdit)
+getCommander = (commander <~~)
 
 keyEventHandler_ this key mod = do
     m <- getState this
@@ -78,15 +80,16 @@ modalEditWidget cmd = do
                            , insertKeyHandler = insertKeyHandler_
                            , mode = NormalMode
                            , editor = e
-                           , commandEditor = cmd
+                           , commander = cmd
                            }
     w <- newWidget initSt $ \w ->
-        w { growHorizontal_ = getEditor' >=> growHorizontal
-          , growVertical_ = getEditor' >=> growVertical
-          , getCursorPosition_ = getEditor >=> getCursorPosition
-          , render_ = \this d r -> getEditor this >>= \e -> render e d r
+        w { growHorizontal_ = const $ growHorizontal e
+          , growVertical_ = const $ growVertical e
+          , setCurrentPosition_ = \_ pos -> setCurrentPosition e pos
+          , getCursorPosition_ = const $ getCursorPosition e
+          , render_ = \_ d r -> render e d r
           , keyEventHandler = keyEventHandler_
           }
-    w `onGainFocus` (getEditor >=> focus)
-    w `onLoseFocus` (getEditor >=> unfocus)
+    w `onGainFocus` const (focus e)
+    w `onLoseFocus` const (unfocus e)
     return w

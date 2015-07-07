@@ -5,11 +5,13 @@ module Commander
     ) where
 
 import Control.Monad
+import Data.IORef
 
 import Data.Text
 import Graphics.Vty
 import Graphics.Vty.Widgets.All
 
+import Application hiding (editor)
 import CommandParser
 
 data DisplayMode = MessageMode | CommandMode
@@ -35,7 +37,7 @@ getDisplayedChild' st =
         MessageMode -> return $ Left $ message st
         CommandMode -> return $ Right $ editor st
 
-commandWidget fg = do
+commandWidget appRef = do
     msg <- plainText "Welcome to ebitor!"
     e <- editWidget
     let initSt = CommandEdit
@@ -68,7 +70,12 @@ commandWidget fg = do
                     Right e -> render e d r
           , keyEventHandler = \this key mod ->
                 case (key, mod) of
-                    (KEsc, []) -> focusPrevious fg >> return True
+                    (KEsc, []) -> do
+                        app <- readIORef appRef
+                        case app of
+                            Application {focusGroup = fg} ->
+                                focusPrevious fg >> return True
+                            _ -> return False
                     _ -> handleKeyEvent e key mod
           }
 
@@ -76,7 +83,10 @@ commandWidget fg = do
         let showMessage m = do
                             setText msg m
                             -- should show the message
-                            focusPrevious fg
+                            app <- readIORef appRef
+                            case app of
+                                -- should show the message
+                                Application {focusGroup = fg} -> focusPrevious fg
         text <- getEditText e
         case parseCommand text of
             Left err -> showMessage $ pack (show err)

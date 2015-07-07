@@ -1,26 +1,28 @@
 {-# LANGUAGE OverloadedStrings #-}
 module Main where
 
-import ModalEditor
+import Data.IORef
+
+import Application
 import Commander
+import ModalEditor
 
-import Data.Text
-import Graphics.Vty hiding (Button)
-import Graphics.Vty.Widgets.All hiding (applyEdit)
+import Graphics.Vty
+import Graphics.Vty.Widgets.All
 
+getApplication :: IO (Application ModalEdit CommandEdit)
+getApplication = do
+    appRef <- newIORef EmptyApplication
+    comm <- commandWidget appRef
+    mainEditor <- modalEditWidget appRef
 
-main :: IO ()
-main = do
     fg <- newFocusGroup
-    commander <- commandWidget fg
-    mainEditor <- modalEditWidget commander
-
     _ <- addToFocusGroup fg mainEditor
-    _ <- addToFocusGroup fg commander
+    _ <- addToFocusGroup fg comm
     _ <- setFocusGroupNextKey fg (KChar 'w') [MCtrl]
     _ <- setFocusGroupPrevKey fg (KChar 'w') [MShift, MCtrl]
 
-    ui <- return mainEditor <--> hBorder <--> return commander
+    ui <- return mainEditor <--> hBorder <--> return comm
     c <- centered ui
 
     coll <- newCollection
@@ -31,4 +33,14 @@ main = do
             (KChar 'q', [MCtrl]) -> shutdownUi >> return True
             _ -> return False
 
-    runUi coll $ defaultContext { focusAttr = fgColor yellow }
+    writeIORef appRef Application { editor = mainEditor
+                                  , commander = comm
+                                  , focusGroup = fg
+                                  , collection = coll
+                                  }
+    readIORef appRef
+
+main :: IO ()
+main = do
+    app <- getApplication
+    runUi (collection app) $ defaultContext { focusAttr = fgColor yellow }

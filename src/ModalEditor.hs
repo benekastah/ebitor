@@ -1,8 +1,10 @@
 module ModalEditor
     ( modalEditWidget
+    , ModalEdit
     ) where
 
 import Control.Monad
+import Data.IORef
 
 import Data.Text
 import Graphics.Vty
@@ -10,7 +12,10 @@ import Graphics.Vty.Widgets.All hiding (applyEdit)
 import qualified Graphics.Vty.Widgets.Edit as E
 import qualified Graphics.Vty.Widgets.TextZipper as Z
 
+import Application hiding (editor)
 import Commander
+
+type App = Application ModalEdit CommandEdit
 
 type KeyHandler = Widget ModalEdit -> Key -> [Modifier] -> IO Bool
 
@@ -22,7 +27,7 @@ data ModalEdit = ModalEdit {
     insertKeyHandler :: KeyHandler,
     mode :: EditMode,
     editor :: Widget Edit,
-    commander :: Widget CommandEdit
+    application :: IORef App
 }
 
 instance Show ModalEdit where
@@ -65,8 +70,13 @@ getEditor = (editor <~~)
 getEditor' :: ModalEdit -> IO (Widget Edit)
 getEditor' this = return $ editor this
 
+getApplication :: Widget ModalEdit -> IO App
+getApplication this = application <~~ this >>= readIORef
+
 getCommander :: Widget ModalEdit -> IO (Widget CommandEdit)
-getCommander = (commander <~~)
+getCommander this = do
+    app <- getApplication this
+    return $ commander app
 
 keyEventHandler_ this key mod = do
     m <- getState this
@@ -74,13 +84,13 @@ keyEventHandler_ this key mod = do
         NormalMode -> normalKeyHandler m this key mod
         InsertMode -> insertKeyHandler m this key mod
 
-modalEditWidget cmd = do
+modalEditWidget appRef = do
     e <- multiLineEditWidget
     let initSt = ModalEdit { normalKeyHandler = normalKeyHandler_
                            , insertKeyHandler = insertKeyHandler_
                            , mode = NormalMode
                            , editor = e
-                           , commander = cmd
+                           , application = appRef
                            }
     w <- newWidget initSt $ \w ->
         w { growHorizontal_ = const $ growHorizontal e

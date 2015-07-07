@@ -23,4 +23,4 @@ commandParser = do
     return ids
 
 parseCommand :: Text -> Either ParseError [Identifier]
-parseCommand = parse commandParser "(unkown)"
+parseCommand = parse commandParser "User command"

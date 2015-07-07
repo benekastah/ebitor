@@ -15,7 +15,7 @@ cabal-version:       >=1.10
 
 library
     hs-source-dirs:      src
-    exposed-modules:     ModalEditor, Commander, CommandParser
+    exposed-modules:     Application, ModalEditor, Commander, CommandParser
     build-depends:       base >= 4.7 && < 5
                        , vty >= 5.2 && < 5.3
                        , vty-ui >= 1.9 && < 2

@@ -28,11 +28,6 @@ getApplication = do
     coll <- newCollection
     _ <- addToCollection coll c fg
 
-    fg `onKeyPressed` \_ k mod ->
-        case (k, mod) of
-            (KChar 'q', [MCtrl]) -> shutdownUi >> return True
-            _ -> return False
-
     writeIORef appRef Application { editor = mainEditor
                                   , commander = comm
                                   , focusGroup = fg

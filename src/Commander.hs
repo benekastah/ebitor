@@ -6,10 +6,14 @@ module Commander
 
 import Control.Monad
 import Data.IORef
+import Data.List
+import Data.Map ((!))
+import qualified Data.Map as M
 
-import Data.Text
+import Data.Text hiding (map, foldl')
 import Graphics.Vty
 import Graphics.Vty.Widgets.All
+import qualified Data.Text as T
 
 import Application hiding (editor)
 import CommandParser
@@ -17,10 +21,21 @@ import CommandParser
 data DisplayMode = MessageMode | CommandMode
                    deriving (Show)
 
+type Command = Text
+
+data CommandMatcher = Empty
+                    | Node (M.Map Char CommandMatcher) Command
+
+data Commands = Commands
+                { actionMap :: M.Map Command ([T.Text] -> IO ())
+                , matcher :: CommandMatcher
+                }
+
 data CommandEdit = CommandEdit
                     { editor :: Widget Edit
                     , message :: Widget FormattedText
                     , mode :: DisplayMode
+                    , commands :: Commands
                     }
 
 type DisplayedChild = Either (Widget FormattedText) (Widget Edit)
@@ -37,6 +52,55 @@ getDisplayedChild' st =
         MessageMode -> return $ Left $ message st
         CommandMode -> return $ Right $ editor st
 
+showMessage appRef m = do
+    app <- readIORef appRef
+    msg <- message <~~ commander app
+    setText msg m
+    -- should show the message
+    focusPrevious $ focusGroup app
+
+addCommand :: CommandMatcher -> Command -> CommandMatcher
+addCommand matcher command =
+    merge matcher $ T.foldr buildMatcher (Node M.empty command) command
+  where
+    buildMatcher ch matcher = Node (M.singleton ch matcher) ""
+    merge Empty b = b
+    merge a Empty = a
+    merge (Node m c) (Node m2 c2) =
+        Node (M.unionWith merge m m2) $ if T.null c then c2 else c
+
+matchCommands :: CommandMatcher -> Command -> [Command]
+matchCommands matcher command =
+    findMatches [] (T.foldl' findNode (Just matcher) command)
+  where
+    findNode :: Maybe CommandMatcher -> Char -> Maybe CommandMatcher
+    findNode (Just (Node m _)) ch = M.lookup ch m
+    findNode (Just Empty) _ = Nothing
+    findNode Nothing _ = Nothing
+
+    findMatches :: [Command] -> Maybe CommandMatcher -> [Command]
+    findMatches ls (Just (Node m c)) =
+        foldl' findMatches (if T.null c then ls else c:ls) (map Just $ M.elems m)
+    findMatches ls (Just Empty) = ls
+    findMatches ls Nothing = ls
+
+getCommandMatcher :: [Command] -> CommandMatcher
+getCommandMatcher = foldl' addCommand Empty
+
+getCommands appRef = Commands { actionMap = cmds, matcher = match }
+  where
+    cmds = M.fromList
+           [ ("quit", const shutdownUi)
+           , ("echo", showMessage appRef . T.unwords)
+           ]
+    match = getCommandMatcher $ M.keys cmds
+
+runCommand showMessage' cmds (partialCommand:args) =
+    case matchCommands (matcher cmds) partialCommand of
+        command:[] -> (actionMap cmds ! command) args
+        [] -> showMessage' $ append "No commands found matching " partialCommand
+        matches -> showMessage' $ T.unwords ("Multiple matches found:":matches)
+
 commandWidget appRef = do
     msg <- plainText "Welcome to ebitor!"
     e <- editWidget
@@ -44,6 +108,7 @@ commandWidget appRef = do
                     { editor = e
                     , message = msg
                     , mode = MessageMode
+                    , commands = getCommands appRef
                     }
 
     widget <- newWidget initSt $ \w ->
@@ -72,28 +137,18 @@ commandWidget appRef = do
                 case (key, mod) of
                     (KEsc, []) -> do
                         app <- readIORef appRef
-                        case app of
-                            Application {focusGroup = fg} ->
-                                focusPrevious fg >> return True
-                            _ -> return False
+                        focusPrevious $ focusGroup app
+                        return True
                     _ -> handleKeyEvent e key mod
           }
 
     e `onActivate` \_ -> do
-        let showMessage m = do
-                            setText msg m
-                            -- should show the message
-                            app <- readIORef appRef
-                            case app of
-                                -- should show the message
-                                Application {focusGroup = fg} -> focusPrevious fg
+        let showMessage' = showMessage appRef
         text <- getEditText e
+        cmds <- commands <~~ widget
         case parseCommand text of
-            Left err -> showMessage $ pack (show err)
-            Right ids -> case ids of
-                ["q"] -> shutdownUi
-                ["echo", x] -> showMessage x
-                _ -> showMessage $ append "Unable to run command: " text
+            Left err -> showMessage' $ pack (show err)
+            Right ids -> runCommand showMessage' cmds ids
 
     widget `onGainFocus` \this -> do
         setText msg ""

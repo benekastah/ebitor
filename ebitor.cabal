@@ -21,6 +21,7 @@ library
                        , vty-ui >= 1.9 && < 2
                        , text >= 1.2 && < 1.3
                        , parsec >= 3.1 && < 3.2
+                       , containers
     default-language:    Haskell2010
 
 executable eb

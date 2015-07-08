@@ -10,7 +10,7 @@ import Data.List
 import Data.Map ((!))
 import qualified Data.Map as M
 
-import Data.Text hiding (map, foldl')
+import Data.Text hiding (map, foldl', length)
 import Graphics.Vty
 import Graphics.Vty.Widgets.All
 import qualified Data.Text as T
@@ -87,13 +87,58 @@ matchCommands matcher command =
 getCommandMatcher :: [Command] -> CommandMatcher
 getCommandMatcher = foldl' addCommand Empty
 
+
 getCommands appRef = Commands { actionMap = cmds, matcher = match }
   where
     cmds = M.fromList
-           [ ("quit", const shutdownUi)
-           , ("echo", showMessage appRef . T.unwords)
+           [ ("quit", quitCommand)
+           , ("echo", echoCommand)
+           , ("help", helpCommand)
            ]
+
     match = getCommandMatcher $ M.keys cmds
+
+    showMessage' = showMessage appRef
+
+    showText = T.pack . show
+
+    arityEq expected actual =
+        if actual == expected then Nothing
+        else Just $ T.unwords
+            ["Expected", showText expected, "args, got", showText actual]
+
+    arityGt expected actual =
+        if actual > expected then Nothing
+        else Just $ T.unwords
+            ["Expected >", showText expected, "args, got", showText actual]
+
+    arityGte expected actual =
+        if actual >= expected then Nothing
+        else Just $ T.unwords
+            ["Expected >=", showText expected, "args, got", showText actual]
+
+    arityLt expected actual =
+        if actual < expected then Nothing
+        else Just $ T.unwords
+            ["Expected <", showText expected, "args, got", showText actual]
+
+    arityLte expected actual =
+        if actual <= expected then Nothing
+        else Just $ T.unwords
+            ["Expected <=", showText expected, "args, got", showText actual]
+
+    commandFn checkArity fn ls =
+        case checkArity (length ls) of
+            Nothing -> fn ls
+            Just msg -> showMessage' msg
+
+    quitCommand = commandFn (arityEq 0) $ const shutdownUi
+
+    helpCommand = commandFn (arityEq 0) $ \_ ->
+        showMessage' $ T.unwords ("Available commands are:":M.keys cmds)
+
+    echoCommand = commandFn (arityGte 1) $ showMessage' . T.unwords
+
 
 runCommand showMessage' cmds (partialCommand:args) =
     case matchCommands (matcher cmds) partialCommand of

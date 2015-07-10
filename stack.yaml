@@ -5,6 +5,7 @@ packages:
   - '.'
 extra-deps:
   - charsetdetect-ae-1.0.1
+  - hslua-0.4.0
   - time-1.5
   - vty-5.2.9
   - vty-ui-1.9

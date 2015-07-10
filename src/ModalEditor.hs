@@ -1,6 +1,5 @@
 module ModalEditor
     ( modalEditWidget
-    , ModalEdit
     ) where
 
 import Control.Monad
@@ -13,28 +12,11 @@ import qualified Graphics.Vty.Widgets.Edit as E
 import qualified Graphics.Vty.Widgets.TextZipper as Z
 
 import Application hiding (editor)
-import Commander
 
-type App = Application ModalEdit CommandEdit
-
-type KeyHandler = Widget ModalEdit -> Key -> [Modifier] -> IO Bool
-
-data EditMode = NormalMode | InsertMode
-                deriving (Show)
-
-data ModalEdit = ModalEdit {
-    normalKeyHandler :: KeyHandler,
-    insertKeyHandler :: KeyHandler,
-    mode :: EditMode,
-    editor :: Widget Edit,
-    application :: IORef App
-}
-
-instance Show ModalEdit where
-    show e = "ModalEdit " ++ show (mode e)
+editor = modalEditEditor
 
 setMode :: Widget ModalEdit -> EditMode -> IO ()
-setMode this m = updateWidgetState this $ \st -> st {mode = m}
+setMode this m = updateWidgetState this $ \st -> st {editMode = m}
 
 applyEdit :: (TextZipper Text -> TextZipper Text) -> Widget ModalEdit -> IO ()
 applyEdit action this = getEditor this >>= E.applyEdit action
@@ -70,7 +52,7 @@ getEditor = (editor <~~)
 getEditor' :: ModalEdit -> IO (Widget Edit)
 getEditor' this = return $ editor this
 
-getApplication :: Widget ModalEdit -> IO App
+getApplication :: Widget ModalEdit -> IO Application
 getApplication this = application <~~ this >>= readIORef
 
 getCommander :: Widget ModalEdit -> IO (Widget CommandEdit)
@@ -80,7 +62,7 @@ getCommander this = do
 
 keyEventHandler_ this key mod = do
     m <- getState this
-    case mode m of
+    case editMode m of
         NormalMode -> normalKeyHandler m this key mod
         InsertMode -> insertKeyHandler m this key mod
 
@@ -88,8 +70,8 @@ modalEditWidget appRef = do
     e <- multiLineEditWidget
     let initSt = ModalEdit { normalKeyHandler = normalKeyHandler_
                            , insertKeyHandler = insertKeyHandler_
-                           , mode = NormalMode
-                           , editor = e
+                           , editMode = NormalMode
+                           , modalEditEditor = e
                            , application = appRef
                            }
     w <- newWidget initSt $ \w ->

@@ -3,14 +3,16 @@ module Main where
 
 import Data.IORef
 
+import qualified Api
 import Application
 import Commander
+import Lua
 import ModalEditor
 
 import Graphics.Vty
 import Graphics.Vty.Widgets.All
 
-getApplication :: IO (Application ModalEdit CommandEdit)
+getApplication :: IO (IORef Application)
 getApplication = do
     appRef <- newIORef EmptyApplication
     comm <- commandWidget appRef
@@ -28,14 +30,19 @@ getApplication = do
     coll <- newCollection
     _ <- addToCollection coll c fg
 
+    l <- newLuaState appRef
+
     writeIORef appRef Application { editor = mainEditor
                                   , commander = comm
                                   , focusGroup = fg
                                   , collection = coll
+                                  , luaState = l
                                   }
-    readIORef appRef
+    return appRef
 
 main :: IO ()
 main = do
-    app <- getApplication
+    appRef <- getApplication
+    app <- readIORef appRef
+    schedule $ runConfig appRef Nothing
     runUi (collection app) $ defaultContext { focusAttr = fgColor yellow }

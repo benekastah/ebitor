@@ -15,13 +15,21 @@ cabal-version:       >=1.10
 
 library
     hs-source-dirs:      src
-    exposed-modules:     Application, ModalEditor, Commander, CommandParser
+    exposed-modules:     Api
+                       , Application
+                       , CommandParser
+                       , Commander
+                       , Lua
+                       , ModalEditor
     build-depends:       base >= 4.7 && < 5
                        , vty >= 5.2 && < 5.3
                        , vty-ui >= 1.9 && < 2
                        , text >= 1.2 && < 1.3
                        , parsec >= 3.1 && < 3.2
+                       , hslua >= 0.4.0 && < 0.4.1
                        , containers
+                       , directory
+                       , filepath
     default-language:    Haskell2010
 
 executable eb

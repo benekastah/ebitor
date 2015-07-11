@@ -6,6 +6,7 @@ module Api
 
 import Control.Monad
 import Data.IORef
+import System.Directory
 
 import Graphics.Vty.Widgets.All
 import qualified Scripting.Lua as Lua

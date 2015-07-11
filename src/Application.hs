@@ -11,6 +11,7 @@ module Application
     ) where
 
 import Data.IORef
+import System.FilePath
 
 import Graphics.Vty
 import Graphics.Vty.Widgets.All

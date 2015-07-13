@@ -41,20 +41,22 @@ addCommand matcher command =
     merge (Node m c) (Node m2 c2) =
         Node (M.unionWith merge m m2) $ if T.null c then c2 else c
 
-matchCommands :: CommandMatcher -> Command -> [Command]
+matchCommands :: CommandMatcher -> Command -> CommandMatch
 matchCommands matcher command =
-    findMatches [] (T.foldl' findNode (Just matcher) command)
+    findMatches (False, []) (T.foldl' findNode (Just matcher) command)
   where
     findNode :: Maybe CommandMatcher -> Char -> Maybe CommandMatcher
     findNode (Just (Node m _)) ch = M.lookup ch m
     findNode (Just Empty) _ = Nothing
     findNode Nothing _ = Nothing
 
-    findMatches :: [Command] -> Maybe CommandMatcher -> [Command]
-    findMatches ls (Just (Node m c)) =
-        foldl' findMatches (if T.null c then ls else c:ls) (map Just $ M.elems m)
-    findMatches ls (Just Empty) = ls
-    findMatches ls Nothing = ls
+    findMatches :: CommandMatch -> Maybe CommandMatcher -> CommandMatch
+    findMatches (match, ls) (Just (Node m c)) =
+        let ls' = if T.null c then ls else c:ls
+            match' = match || c == command
+        in foldl' findMatches (match', ls') (map Just $ M.elems m)
+    findMatches match (Just Empty) = findMatches match Nothing
+    findMatches match Nothing = match
 
 getCommandMatcher :: [Command] -> CommandMatcher
 getCommandMatcher = foldl' addCommand Empty
@@ -66,6 +68,9 @@ getCommands appRef = Commands { actionMap = cmds, matcher = match }
            [ ("quit", quitCommand)
            , ("echo", echoCommand)
            , ("help", helpCommand)
+           , ("edit", editCommand)
+           , ("e", editCommand)
+           , ("write", writeCommand)
            ]
 
     match = getCommandMatcher $ M.keys cmds
@@ -109,14 +114,30 @@ getCommands appRef = Commands { actionMap = cmds, matcher = match }
     helpCommand = commandFn (arityEq 0) $ \_ ->
         echo' $ T.unwords ("Available commands are:":M.keys cmds)
 
-    echoCommand = commandFn (arityGte 1) $ echo' . T.unwords
+    editCommand = commandFn (arityEq 1) $ \[CmdString fname] ->
+        edit appRef $ T.unpack fname
+
+    writeCommand = commandFn (arityLte 1) $ \args ->
+        case args of
+            [CmdString f] -> write appRef $ Just $ T.unpack f
+            [] -> write appRef Nothing
+            _ -> echo' "Invalid file name"
+
+    echoCommand = commandFn (arityGte 1) $ echo' . T.unwords . map syntaxNodeToText
 
 
-runCommand echo' cmds (partialCommand:args) =
+runCommand :: IORef Application -> Commands -> CmdSyntaxNode -> IO ()
+runCommand appRef cmds (CmdCall partialCommand args) =
     case matchCommands (matcher cmds) partialCommand of
-        command:[] -> (actionMap cmds ! command) args
-        [] -> echo' $ append "No commands found matching " partialCommand
-        matches -> echo' $ T.unwords ("Multiple matches found:":matches)
+        (True, _) -> run partialCommand args
+        (False, command:[]) -> run command args
+        (False, []) -> echo appRef $ append "No commands found matching " partialCommand
+        (False, matches) -> echo appRef $ T.unwords ("Multiple matches found:":matches)
+  where
+    run :: T.Text -> [CmdSyntaxNode] -> IO ()
+    run = (actionMap cmds !)
+
+runCommand appRef cmds _ = error "Unreachable"
 
 commandWidget appRef = do
     msg <- plainText "Welcome to ebitor!"
@@ -165,7 +186,7 @@ commandWidget appRef = do
         cmds <- commands <~~ widget
         case parseCommand text of
             Left err -> echo' $ pack (show err)
-            Right ids -> runCommand echo' cmds ids
+            Right ids -> runCommand appRef cmds ids
 
     widget `onGainFocus` \this -> do
         setText msg ""

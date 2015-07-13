@@ -1,5 +1,7 @@
 module ModalEditor
     ( modalEditWidget
+    , setEditText
+    , getEditText
     ) where
 
 import Control.Monad
@@ -7,7 +9,7 @@ import Data.IORef
 
 import Data.Text
 import Graphics.Vty
-import Graphics.Vty.Widgets.All hiding (applyEdit)
+import Graphics.Vty.Widgets.All hiding (applyEdit, setEditText, getEditText)
 import qualified Graphics.Vty.Widgets.Edit as E
 import qualified Graphics.Vty.Widgets.TextZipper as Z
 
@@ -20,6 +22,16 @@ setMode this m = updateWidgetState this $ \st -> st {editMode = m}
 
 applyEdit :: (TextZipper Text -> TextZipper Text) -> Widget ModalEdit -> IO ()
 applyEdit action this = getEditor this >>= E.applyEdit action
+
+setEditText :: Widget ModalEdit -> Text -> IO ()
+setEditText this text = do
+    e <- editor <~~ this
+    E.setEditText e text
+
+getEditText :: Widget ModalEdit -> IO Text
+getEditText this = do
+    e <- editor <~~ this
+    E.getEditText e
 
 normalKeyHandler_ :: KeyHandler
 normalKeyHandler_ this key mod =
@@ -73,6 +85,7 @@ modalEditWidget appRef = do
                            , editMode = NormalMode
                            , modalEditEditor = e
                            , application = appRef
+                           , filePath = Nothing
                            }
     w <- newWidget initSt $ \w ->
         w { growHorizontal_ = const $ growHorizontal e

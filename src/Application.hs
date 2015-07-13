@@ -2,12 +2,14 @@ module Application
     ( Application(..)
     , Command
     , CommandEdit(..)
+    , CommandMatch
     , CommandMatcher(..)
     , Commands(..)
     , DisplayMode(..)
     , EditMode(..)
     , ModalEdit(..)
     , KeyHandler
+    , CmdSyntaxNode(..)
     ) where
 
 import Data.IORef
@@ -30,6 +32,7 @@ data ModalEdit = ModalEdit
                 , editMode :: EditMode
                 , modalEditEditor :: Widget Edit
                 , application :: IORef Application
+                , filePath :: Maybe FilePath
                 }
 
 instance Show ModalEdit where
@@ -38,13 +41,21 @@ instance Show ModalEdit where
 data DisplayMode = MessageMode | CommandMode
                    deriving (Show)
 
+data CmdSyntaxNode = CmdIdentifier T.Text
+                   | CmdNumber Double
+                   | CmdString T.Text
+                   | CmdCall T.Text [CmdSyntaxNode]
+                   deriving (Show)
+
 type Command = T.Text
+
+type CommandMatch = (Bool, [Command])
 
 data CommandMatcher = Empty
                     | Node (M.Map Char CommandMatcher) Command
 
 data Commands = Commands
-                { actionMap :: M.Map Command ([T.Text] -> IO ())
+                { actionMap :: M.Map Command ([CmdSyntaxNode] -> IO ())
                 , matcher :: CommandMatcher
                 }
 

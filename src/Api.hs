@@ -34,8 +34,15 @@ echo appRef m = do
     isFocused <- focused <~ cmdr
     when isFocused (focusPrevious $ focusGroup app)
 
-edit :: IORef Application -> FilePath -> IO ()
-edit appRef fpath = do
+edit :: IORef Application -> Maybe FilePath -> IO ()
+edit appRef Nothing = do
+    e <- editor <~ appRef
+    mfpath <- filePath <~~ e
+    case mfpath of
+        Just fpath -> edit appRef mfpath
+        _ -> echo appRef "No file name"
+
+edit appRef (Just fpath) = do
     s <- readFile fpath
     e <- editor <~ appRef
     updateWidgetState e $ \st -> st {filePath = Just fpath}

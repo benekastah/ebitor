@@ -114,8 +114,11 @@ getCommands appRef = Commands { actionMap = cmds, matcher = match }
     helpCommand = commandFn (arityEq 0) $ \_ ->
         echo' $ T.unwords ("Available commands are:":M.keys cmds)
 
-    editCommand = commandFn (arityEq 1) $ \[CmdString fname] ->
-        edit appRef $ T.unpack fname
+    editCommand = commandFn (arityLte 1) $ \args ->
+        case args of
+            [CmdString f] -> edit appRef $ Just $ T.unpack f
+            [] -> edit appRef Nothing
+            _ -> echo' "Invalid file name"
 
     writeCommand = commandFn (arityLte 1) $ \args ->
         case args of
@@ -136,8 +139,6 @@ runCommand appRef cmds (CmdCall partialCommand args) =
   where
     run :: T.Text -> [CmdSyntaxNode] -> IO ()
     run = (actionMap cmds !)
-
-runCommand appRef cmds _ = error "Unreachable"
 
 commandWidget appRef = do
     msg <- plainText "Welcome to ebitor!"
@@ -184,6 +185,8 @@ commandWidget appRef = do
         let echo' = echo appRef
         text <- getEditText e
         cmds <- commands <~~ widget
+        fg <- focusGroup <~ appRef
+        focusPrevious fg
         case parseCommand text of
             Left err -> echo' $ pack (show err)
             Right ids -> runCommand appRef cmds ids

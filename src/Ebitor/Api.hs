@@ -1,5 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
-module Api
+module Ebitor.Api
     ( quit
     , echo
     , edit
@@ -15,8 +15,8 @@ import Graphics.Vty.Widgets.All
 import qualified Scripting.Lua as Lua
 import qualified Data.Text as T
 
-import Application
-import ModalEditor
+import Ebitor.Application
+import Ebitor.ModalEditor as ModalEditor
 
 quit :: IORef Application -> IO ()
 quit appRef = do

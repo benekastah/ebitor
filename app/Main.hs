@@ -7,11 +7,11 @@ import System.FilePath
 import System.IO
 import System.Random
 
-import qualified Api
-import Application
-import Commander
-import Lua
-import ModalEditor
+import qualified Ebitor.Api as Api
+import Ebitor.Application
+import Ebitor.Commander
+import Ebitor.Lua
+import Ebitor.ModalEditor
 
 import Graphics.Vty
 import Graphics.Vty.Widgets.All

@@ -10,4 +10,6 @@ extra-deps:
   - vty-5.2.9
   - vty-ui-1.9
   - yi-rope-0.7.0.1
+  - aeson-0.9.0.1
+  - attoparsec-0.13.0.1
 resolver: lts-2.16

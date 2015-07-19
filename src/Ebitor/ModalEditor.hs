@@ -1,4 +1,4 @@
-module ModalEditor
+module Ebitor.ModalEditor
     ( modalEditWidget
     , setEditText
     , getEditText
@@ -13,7 +13,7 @@ import Graphics.Vty.Widgets.All hiding (applyEdit, setEditText, getEditText)
 import qualified Graphics.Vty.Widgets.Edit as E
 import qualified Graphics.Vty.Widgets.TextZipper as Z
 
-import Application hiding (editor)
+import Ebitor.Application hiding (editor)
 
 editor = modalEditEditor
 

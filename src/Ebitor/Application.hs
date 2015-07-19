@@ -1,4 +1,4 @@
-module Application
+module Ebitor.Application
     ( Application(..)
     , Command
     , CommandEdit(..)

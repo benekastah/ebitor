@@ -1,5 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
-module CommandParser
+module Ebitor.CommandParser
     ( parseCommand
     , syntaxNodeToText
     ) where
@@ -12,7 +12,7 @@ import Text.Parsec.Text
 import qualified Data.Text as T
 import qualified Data.Text.Read as T
 
-import Application
+import Ebitor.Application
 
 syntaxNodeToText (CmdIdentifier t) = t
 syntaxNodeToText (CmdString t) = t

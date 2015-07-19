@@ -1,5 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
-module Lua
+module Ebitor.Lua
     ( runConfig
     , newLuaState
     ) where
@@ -16,8 +16,8 @@ import qualified Data.Text.Encoding as T
 import qualified Scripting.Lua as Lua
 import Graphics.Vty.Widgets.All ((<~))
 
-import Application
-import Api
+import Ebitor.Application
+import Ebitor.Api
 
 newLuaState appRef = do
     l <- Lua.newstate

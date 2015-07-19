@@ -1,5 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
-module Commander
+module Ebitor.Commander
     ( commandWidget
     ) where
 
@@ -14,9 +14,9 @@ import Graphics.Vty
 import Graphics.Vty.Widgets.All
 import qualified Data.Text as T
 
-import Api
-import Application hiding (editor)
-import CommandParser
+import Ebitor.Api
+import Ebitor.Application hiding (editor)
+import Ebitor.CommandParser
 
 editor = commandEditEditor
 

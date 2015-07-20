@@ -12,7 +12,11 @@ instance Foldable AATree where
     foldr f z (Branch _ k l r) = foldr f (f k (foldr f z r)) l
 
 map :: (Ord a, Ord b) => (a -> b) -> AATree a -> AATree b
-map f t = fromList $ Prelude.map f (toList t)
+map f Nil = Nil
+map f (Branch lv v l r) = Branch lv (f v) (map f l) (map f r)
+
+concat :: Ord a => AATree a -> AATree a -> AATree a
+concat = foldr insert
 
 empty :: AATree a
 empty = Nil

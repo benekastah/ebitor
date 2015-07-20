@@ -1,10 +1,15 @@
 module Ebitor.AATree
     ( AATree
+    , concat
+    , delete
     , empty
     , fromList
-    , value
     , insert
-    , delete
+    , map
+    , null
+    , value
     ) where
+
+import Prelude ()
 
 import Ebitor.AATree.Internal

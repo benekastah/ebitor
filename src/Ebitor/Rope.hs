@@ -15,6 +15,7 @@ module Ebitor.Rope
     , insertString
     , cons
     , snoc
+    , remove
     , concat
     , splitAt
     , take
@@ -77,6 +78,9 @@ cons = R.cons
 
 snoc :: Rope -> Char -> Rope
 snoc = R.snoc
+
+remove :: Rope -> Int -> Either IndexError Rope
+remove = R.remove
 
 concat :: [Rope] -> Rope
 concat = R.concat

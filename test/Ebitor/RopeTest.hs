@@ -95,6 +95,29 @@ prop_cons ch s = ch:s == R.unpack (R.cons ch $ packRope s)
 prop_snoc s ch = s++[ch] == R.unpack (R.snoc (packRope s) ch)
 prop_singleton ch = packRope [ch] == R.singleton ch
 
+prop_removeIndexLessThanZero :: Rope -> Property
+prop_removeIndexLessThanZero r = forAll (suchThat arbitrary (<0)) $ \i ->
+    remove r i == Left IndexLessThanZero
+
+prop_removeIndexOutOfBounds :: Rope -> Property
+prop_removeIndexOutOfBounds r = forAll (suchThat arbitrary (>= (R.length r))) $ \i ->
+    remove r i == Left IndexOutOfBounds
+
+prop_removeLength =
+    forAll (suchThat arbitrary (/= "")) $ \s ->
+    forAll (choose (0, (P.length s - 1))) $ \i ->
+        let r = packRope s
+            r' = fromRight $ remove r i
+        in  R.length r - 1 == R.length r' && P.length s - 1 == P.length (unpack r')
+
+
+test_remove1 = assertEqual (R.remove "hi there!" 0) (Right "i there!")
+test_remove2 =
+    let r = "hi there!"
+        len = R.length r - 1
+    in  assertEqual (R.remove r len) (Right "hi there")
+test_remove3 = assertEqual (R.remove "hi there!" 2) (Right "hithere!")
+
 
 prop_concat ls = foldl' (++) "" ls == R.unpack (R.concat $ map packRope ls)
 

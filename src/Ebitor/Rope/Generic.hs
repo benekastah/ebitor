@@ -3,9 +3,9 @@ module Ebitor.Rope.Generic where
 
 import Data.Eq ()
 import Data.List (foldl')
-import Data.Monoid (mappend, mempty)
+import Data.Maybe (isJust, fromJust)
 import Data.String (IsString, fromString)
-import Prelude hiding (length, null, concat, splitAt)
+import Prelude hiding (length, null, concat, splitAt, take, drop)
 import qualified Data.Foldable as F
 import qualified Prelude as P
 
@@ -73,31 +73,47 @@ unpack (Node _ a b) = (unpack a) ++ (unpack b)
 append :: GenericRope a -> GenericRope a -> GenericRope a
 append a b = Node (length a + length b) a b
 
-update :: GenericRope a -> (GenericRope a -> Int -> GenericRope a) -> Int -> Either IndexError (GenericRope a)
-update r _ i
-    | i < 0 = Left IndexLessThanZero
-    | i > len = Left IndexOutOfBounds
-    where len = length r
-update (Node _ a b) f i
-    | i <= lenA = case update a f i of
+bounded :: (Int -> Int -> Bool) -> GenericRope a -> Int -> Maybe IndexError
+bounded gt r i
+    | i < 0 = Just IndexLessThanZero
+    | i `gt` length r = Just IndexOutOfBounds
+    | otherwise = Nothing
+
+boundedGt :: GenericRope a -> Int -> Maybe IndexError
+boundedGt = bounded (>)
+boundedGte :: GenericRope a -> Int -> Maybe IndexError
+boundedGte = bounded (>=)
+
+update :: (GenericRope a -> Int -> Maybe IndexError)
+       -> GenericRope a
+       -> (GenericRope a -> Int -> GenericRope a)
+       -> Int
+       -> Either IndexError (GenericRope a)
+update bf r _ i | isJust err = Left $ fromJust err
+    where err = bf r i
+update bf (Node _ a b) f i
+    | i <= lenA = case update bf a f i of
         Right a' -> Right $ append a' b
         e -> e
-    | otherwise = case update b f (i - lenA) of
+    | otherwise = case update bf b f (i - lenA) of
         Right b' -> Right $ append a b'
         e -> e
   where
     lenA = length a
-update r f i = Right $ f r i
+update bf r f i = Right $ f r i
+
+updateGt = update boundedGt
+updateGte = update boundedGte
 
 insert :: RopePart a => GenericRope a -> Int -> Char -> Either IndexError (GenericRope a)
-insert r i ch = update r doUpdate i
+insert r i ch = updateGt r doUpdate i
   where
     doUpdate (Leaf l t) i =
         let (t1, t2) = RP.splitAt i t
         in  Leaf (l + 1) (RP.append t1 $ RP.cons ch t2)
 
 insertPart :: RopePart a => GenericRope a -> Int -> a -> Either IndexError (GenericRope a)
-insertPart r i t = update r doUpdate i
+insertPart r i t = updateGt r doUpdate i
   where
     doUpdate (Leaf l t') i =
         let (t1, t2) = RP.splitAt i t'
@@ -114,6 +130,11 @@ snoc r ch = fromRight $ insert r (length r) ch
 
 concat :: RopePart a => [GenericRope a] -> GenericRope a
 concat ropes = foldl' append empty ropes
+
+remove :: RopePart a => GenericRope a -> Int -> Either IndexError (GenericRope a)
+remove r i = case boundedGte r i of
+    Just e -> Left e
+    Nothing -> Right $ append (take i r) (drop (i + 1) r)
 
 splitAt :: RopePart a => Int -> GenericRope a -> (GenericRope a, GenericRope a)
 splitAt i r

@@ -1,4 +1,3 @@
-{-# OPTIONS_GHC -F -pgmF htfpp #-}
 module Ebitor.AATreeTest (htf_thisModulesTests) where
 
 import Prelude hiding (null)

@@ -1,4 +1,3 @@
-{-# LANGUAGE OverloadedStrings #-}
 module Ebitor.Api
     ( quit
     , echo

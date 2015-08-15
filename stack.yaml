@@ -4,12 +4,13 @@ flags:
 packages:
   - '.'
 extra-deps:
+  - aeson-0.9.0.1
+  - attoparsec-0.13.0.1
   - charsetdetect-ae-1.0.1
   - hslua-0.4.0
+  - regex-pcre-0.94.4
   - time-1.5
   - vty-5.2.9
   - vty-ui-1.9
   - yi-rope-0.7.0.1
-  - aeson-0.9.0.1
-  - attoparsec-0.13.0.1
 resolver: lts-2.16

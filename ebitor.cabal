@@ -15,32 +15,27 @@ cabal-version:       >=1.10
 
 library
     hs-source-dirs:      src
-    exposed-modules:     Ebitor.AATree
-                       , Ebitor.AATree.Internal
-                       , Ebitor.Api
-                       , Ebitor.Application
-                       , Ebitor.CommandParser
-                       , Ebitor.Commander
-                       , Ebitor.Lua
-                       , Ebitor.ModalEditor
+    exposed-modules:     Ebitor.CommandParser
                        , Ebitor.Rope
+                       , Ebitor.Rope.Cursor
                        , Ebitor.Rope.Generic
                        , Ebitor.Rope.Part
                        , Ebitor.Rope.Regex
                        , Ebitor.Utils
     build-depends:       base >= 4.7 && < 5
                        , array
+                       -- , brick == 0.1
                        , bytestring
                        , containers
                        , directory
                        , filepath
                        , hslua >= 0.4.0 && < 0.4.1
+                       , lens == 4.*
                        , parsec >= 3.1 && < 3.2
                        , regex-base == 0.93.*
                        , regex-tdfa == 1.2.*
                        , text >= 1.2 && < 1.3
-                       , vty >= 5.2 && < 5.3
-                       , vty-ui >= 1.9 && < 2
+                       , vty == 5.4.0
     default-extensions:  OverloadedStrings
     other-extensions:    GADTs
     default-language:    Haskell2010
@@ -50,12 +45,12 @@ executable eb
     main-is:             Main.hs
     ghc-options:         -threaded -rtsopts -with-rtsopts=-N
     build-depends:       base
+                       -- , brick == 0.1
                        , ebitor
                        , filepath
                        , random
                        , text >= 1.2 && < 1.3
-                       , vty >= 5.2 && < 5.3
-                       , vty-ui >= 1.9 && < 2
+                       , vty == 5.4.*
     default-extensions:  OverloadedStrings
     default-language:    Haskell2010
 
@@ -70,7 +65,7 @@ test-suite ebitor-test
                        , regex-tdfa
                        , text
     default-extensions:  OverloadedStrings
-    ghc-options:         -threaded -rtsopts -with-rtsopts=-N -F -pgmF htfpp
+    ghc-options:         -threaded -rtsopts -with-rtsopts=-N
     default-language:    Haskell2010
 
 source-repository head

@@ -1,3 +1,4 @@
+{-# OPTIONS_GHC -F -pgmF htfpp #-}
 module Ebitor.Rope.RegexTest (htf_thisModulesTests) where
 
 import Test.Framework
@@ -8,8 +9,8 @@ import Ebitor.Rope
 import Ebitor.Rope.Regex
 import Ebitor.RopeUtils
 
-(=~*) :: Rope -> Rope -> Rope
-r1 =~* r2 = r1 =~ r2
+(=~*) :: String -> String -> Rope
+r1 =~* r2 = packRope r1 =~ packRope r2
 
 test_match1 = assertEqual ("asdf" =~* "^a.*") "asdf"
 test_match2 = assertEqual ("hi there" =~* "[[:alpha:]]+[[:space:]][[:alpha:]]+") "hi there"

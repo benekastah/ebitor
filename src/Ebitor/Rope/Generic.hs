@@ -4,8 +4,9 @@ module Ebitor.Rope.Generic where
 import Data.Eq ()
 import Data.List (foldl')
 import Data.Maybe (isJust, fromJust)
+import Data.Ord (Ordering(..))
 import Data.String (IsString, fromString)
-import Prelude hiding (length, null, concat, splitAt, take, drop)
+import Prelude hiding (length, null, concat, splitAt, take, takeWhile, drop, dropWhile, reverse)
 import qualified Data.Foldable as F
 import qualified Prelude as P
 
@@ -23,7 +24,7 @@ instance Eq (GenericRope a) where
     a /= b = unpack a /= unpack b
 
 instance RopePart a => Show (GenericRope a) where
-    show r = unpack $ cons '"' $ snoc r '"'
+    show = show . unpack
 
 instance RopePart a => IsString (GenericRope a) where
     fromString = pack
@@ -155,8 +156,15 @@ splitAt i (Leaf len t) =
 take :: RopePart a => Int -> GenericRope a -> GenericRope a
 take i = fst . splitAt i
 
+takeWhile :: RopePart a => (Char -> Bool) -> GenericRope a -> GenericRope a
+takeWhile f = pack . P.takeWhile f . unpack
+
 drop :: RopePart a => Int -> GenericRope a -> GenericRope a
 drop i = snd . splitAt i
+
+dropWhile :: RopePart a => (Char -> Bool) -> GenericRope a -> GenericRope a
+dropWhile f = pack . P.dropWhile f . unpack
+
 
 uncons :: RopePart a => GenericRope a -> Maybe (Char, GenericRope a)
 uncons r
@@ -164,6 +172,10 @@ uncons r
         let (r1, r2) = splitAt 1 r
         in  Just (unpack r1 !! 0, r2)
     | otherwise = Nothing
+
+reverse :: RopePart a => GenericRope a -> GenericRope a
+reverse (Node l a b) = Node l (reverse b) (reverse a)
+reverse (Leaf l t) = Leaf l $ RP.reverse t
 
 -- Lookups
 index :: GenericRope a -> Int -> Either IndexError Char

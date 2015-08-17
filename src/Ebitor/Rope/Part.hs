@@ -1,7 +1,7 @@
 {-# LANGUAGE TypeSynonymInstances, FlexibleInstances #-}
 module Ebitor.Rope.Part where
 
-import Prelude hiding (concat, length, splitAt, take, drop, tail)
+import Prelude hiding (concat, length, splitAt, take, drop, tail, reverse)
 import qualified Prelude as P
 
 import qualified Data.Text as T
@@ -23,6 +23,7 @@ class RopePart s where
     splitAt :: Int -> s -> (s, s)
     take :: Int -> s -> s
     drop :: Int -> s -> s
+    reverse :: s -> s
 
     empty = pack ""
     append a b = concat [a, b]
@@ -37,6 +38,7 @@ class RopePart s where
         in  (pack a, pack b)
     take i = pack . P.take i . unpack
     drop i = pack . P.drop i . unpack
+    reverse = pack . P.reverse . unpack
 
 
 instance RopePart String where
@@ -59,3 +61,4 @@ instance RopePart T.Text where
     splitAt = T.splitAt
     take = T.take
     drop = T.drop
+    reverse = T.reverse

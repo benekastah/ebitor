@@ -1,3 +1,4 @@
+{-# OPTIONS_GHC -F -pgmF htfpp #-}
 module Ebitor.RopeTest (htf_thisModulesTests) where
 
 import Data.Either

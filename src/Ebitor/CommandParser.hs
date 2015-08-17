@@ -11,7 +11,11 @@ import Text.Parsec.Text
 import qualified Data.Text as T
 import qualified Data.Text.Read as T
 
-import Ebitor.Application
+data CmdSyntaxNode = CmdIdentifier T.Text
+                   | CmdNumber Double
+                   | CmdString T.Text
+                   | CmdCall T.Text [CmdSyntaxNode]
+                   deriving (Show)
 
 syntaxNodeToText (CmdIdentifier t) = t
 syntaxNodeToText (CmdString t) = t

@@ -1,35 +1,45 @@
 module Ebitor.Rope
-    ( Rope
+    ( Cursor(..)
     , IndexError(..)
-    , length
-    , null
+    , Position(..)
+    , Rope
+    , append
+    , concat
+    , cons
+    , drop
+    , dropWhile
     , empty
-    , singleton
+    , index
+    , insert
+    , insertString
+    , insertText
+    , length
+    , newCursor
+    , newPosition
+    , null
     , pack
     , packWithSize
-    , unpack
-    , unpackText
-    , append
-    , insert
-    , insertText
-    , insertString
-    , cons
-    , snoc
+    , positionForCursor
     , remove
-    , concat
+    , reverse
+    , singleton
+    , snoc
     , splitAt
     , take
-    , drop
+    , takeWhile
     , uncons
-    , index
+    , unpack
+    , unpackText
     ) where
 
-import Prelude hiding (length, null, concat, splitAt, take, drop)
+import Prelude hiding (length, null, concat, splitAt, take, takeWhile, drop, dropWhile, reverse)
 import qualified Prelude as P
 
 import qualified Data.Text as T
 
+import Ebitor.Rope.Cursor (Cursor(..), Position(..), newCursor, newPosition)
 import Ebitor.Rope.Generic (GenericRope(..), IndexError(..))
+import qualified Ebitor.Rope.Cursor as R
 import qualified Ebitor.Rope.Generic as R
 
 
@@ -91,11 +101,23 @@ splitAt = R.splitAt
 take :: Int -> Rope -> Rope
 take = R.take
 
+takeWhile :: (Char -> Bool) -> Rope -> Rope
+takeWhile = R.takeWhile
+
 drop :: Int -> Rope -> Rope
 drop = R.drop
+
+dropWhile :: (Char -> Bool) -> Rope -> Rope
+dropWhile = R.dropWhile
+
+reverse :: Rope -> Rope
+reverse = R.reverse
 
 uncons :: Rope -> Maybe (Char, Rope)
 uncons = R.uncons
 
 index :: Rope -> Int -> Either IndexError Char
 index = R.index
+
+positionForCursor :: Position -> Rope -> Cursor -> Position
+positionForCursor = R.positionForCursor

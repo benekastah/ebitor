@@ -1,7 +1,7 @@
 {-# LANGUAGE TypeSynonymInstances, FlexibleInstances #-}
 module Ebitor.Rope.Part where
 
-import Prelude hiding (concat, length, splitAt, take, drop, tail, reverse)
+import Prelude hiding (concat, length, splitAt, take, drop, tail, reverse, null, uncons)
 import qualified Prelude as P
 
 import qualified Data.Text as T
@@ -13,33 +13,48 @@ class RopePart s where
     unpack :: s -> String
 
     empty :: s
-    append :: s -> s -> s
-    concat :: [s] -> s
-    cons :: Char -> s -> s
-    singleton :: Char -> s
-
-    index :: s -> Int -> Char
-    length :: s -> Int
-    splitAt :: Int -> s -> (s, s)
-    take :: Int -> s -> s
-    drop :: Int -> s -> s
-    reverse :: s -> s
-
     empty = pack ""
+
+    append :: s -> s -> s
     append a b = concat [a, b]
+
+    concat :: [s] -> s
     concat = pack . P.concat . map unpack
+
+    cons :: Char -> s -> s
     cons ch = pack . (ch:) . unpack
+
+    singleton :: Char -> s
     singleton ch = pack [ch]
 
+    index :: s -> Int -> Char
     index s = (unpack s !!)
+
+    length :: s -> Int
     length = P.length . unpack
+
+    splitAt :: Int -> s -> (s, s)
     splitAt i s =
         let (a, b) = P.splitAt i $ unpack s
         in  (pack a, pack b)
+
+    take :: Int -> s -> s
     take i = pack . P.take i . unpack
+
+    drop :: Int -> s -> s
     drop i = pack . P.drop i . unpack
+
+    uncons :: s -> Maybe (Char, s)
+    uncons s =
+        case P.uncons $ unpack s of
+            Just (c, s') -> (c, pack s')
+            Nothing -> Nothing
+
+    reverse :: s -> s
     reverse = pack . P.reverse . unpack
 
+    null :: s -> Bool
+    null = P.null . unpack
 
 instance RopePart String where
     pack = id
@@ -61,4 +76,7 @@ instance RopePart T.Text where
     splitAt = T.splitAt
     take = T.take
     drop = T.drop
+    uncons = T.uncons
     reverse = T.reverse
+
+    null = T.null

@@ -14,6 +14,7 @@ module Ebitor.Rope
     , insertString
     , insertText
     , length
+    , lines
     , newCursor
     , newPosition
     , null
@@ -28,11 +29,15 @@ module Ebitor.Rope
     , take
     , takeWhile
     , uncons
+    , unlines
     , unpack
     , unpackText
+    , unwords
+    , words
     ) where
 
-import Prelude hiding (length, null, concat, splitAt, take, takeWhile, drop, dropWhile, reverse)
+import Prelude hiding (length, null, concat, splitAt, take, takeWhile, drop,
+                       dropWhile, reverse, words, lines, unwords, unlines)
 import qualified Prelude as P
 
 import qualified Data.Text as T
@@ -115,6 +120,18 @@ reverse = R.reverse
 
 uncons :: Rope -> Maybe (Char, Rope)
 uncons = R.uncons
+
+words :: Rope -> [Rope]
+words = R.words
+
+lines :: Rope -> [Rope]
+lines = R.lines
+
+unwords :: [Rope] -> Rope
+unwords = R.unwords
+
+unlines :: [Rope] -> Rope
+unlines = R.unlines
 
 index :: Rope -> Int -> Either IndexError Char
 index = R.index

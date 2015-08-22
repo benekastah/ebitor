@@ -136,3 +136,9 @@ prop_uncons s@[] = R.uncons (packRope s) == Nothing
 prop_uncons s1@(ch1:s2) =
     let (ch2, r) = fromJust $ R.uncons $ packRope s1
     in  ch1 == ch2 && R.unpack r == s2
+
+
+prop_words s = map unpack (R.words $ pack s) == P.words s
+prop_lines s = map unpack (R.lines $ pack s) == P.lines s
+prop_unwords s = unpack (R.unwords $ map pack s) == P.unwords s
+prop_unlines s = unpack (R.unlines $ map pack s) == P.unlines s

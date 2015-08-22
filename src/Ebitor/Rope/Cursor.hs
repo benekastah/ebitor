@@ -3,7 +3,7 @@ module Ebitor.Rope.Cursor where
 import Prelude hiding (splitAt, reverse, length)
 import qualified Prelude as P
 
-import Ebitor.Rope.Generic
+import Ebitor.Rope.Generic as R
 import Ebitor.Rope.Part (RopePart)
 import qualified Ebitor.Rope.Part as RP
 
@@ -18,21 +18,19 @@ instance Ord Cursor where
         | col' > col = LT
         | otherwise = EQ
 
-newtype Position = Position (Cursor, Int)
-                   deriving (Show, Eq)
-
-instance Ord Position where
-    compare (Position (_, i)) (Position (_, i')) = compare i i'
-
 newCursor = Cursor (1, 1)
-
-newPosition = Position (newCursor, 0)
 
 addToLn :: Int -> Cursor -> Cursor
 addToLn i (Cursor (ln, col)) = Cursor (ln + i, col)
 
 addToCol :: Int -> Cursor -> Cursor
 addToCol i (Cursor (ln, col)) = Cursor (ln, col + i)
+
+line :: Cursor -> Int
+line (Cursor c) = fst c
+
+column :: Cursor -> Int
+column (Cursor c) = snd c
 
 isNewline :: Char -> Bool
 isNewline '\n' = True
@@ -66,32 +64,3 @@ lastCursorPos pos (Leaf l t) = cursorPosFromString pos $ RP.unpack t
     cursorPosFromString pos s =
         let (pos', s', _) = moveCursor 1 pos s
         in  cursorPosFromString pos' s'
-
--- Not optimized like positionForCursor since I don't anticipate using often when
--- not debugging. If it becomes a problem I'll fix it.
-cursorForIndex :: RopePart a => GenericRope a -> Int -> Either IndexError Cursor
-cursorForIndex r i
-    | i < 0 = Left IndexLessThanZero
-    | i >= length r = Left IndexOutOfBounds
-    | otherwise =
-        let (r', _) = splitAt i r
-        in  Right $ lastCursorPos newCursor r'
-
--- Takes the current position, a rope and a (potentially invalid) cursor
--- position and returns the closest valid position.
-positionForCursor :: RopePart a => Position -> GenericRope a -> Cursor -> Position
-positionForCursor _ r (Cursor (ln, col)) | ln <= 0 = newPosition
-positionForCursor curPos@(Position (curs, curI)) r newCurs =
-    let (r1, r2) = splitAt curI r
-    in  if curs <= newCurs
-        then cursorToIndex 1 curPos $ unpack r2
-        else cursorToIndex (-1) curPos $ unpack (reverse r1)
-  where
-    cmp sign = if sign == -1 then (<) else (>)
-    cursorToIndex sign pos@(Position (curs, i)) s
-        | curs == newCurs = pos
-        | cmp sign curs newCurs = Position (curs, i)
-        | s == "" = pos
-        | otherwise =
-            let (curs', s', chars) = moveCursor sign curs s
-            in  cursorToIndex sign (Position (curs', i + chars * sign)) s'

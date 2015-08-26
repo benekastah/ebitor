@@ -22,11 +22,11 @@ test_empty = assertBool $ R.null empty
 
 
 prop_length :: Rope -> Bool
-prop_length r@(Leaf l t) = l == T.length t
+prop_length r@(Leaf l _ t) = l == T.length t
 prop_length r = sumChildLengths r == R.length r
   where
-    sumChildLengths r@(Leaf _ _) = R.length r
-    sumChildLengths (Node _ a b) = sumChildLengths a + sumChildLengths b
+    sumChildLengths r@(Leaf _ _ _) = R.length r
+    sumChildLengths (Node _ _ a b) = sumChildLengths a + sumChildLengths b
 
 prop_packLength :: String -> Bool
 prop_packLength s = P.length s == R.length (packRope s)
@@ -37,6 +37,10 @@ prop_appendLength a b = R.length (R.append a b) == (R.length a) + (R.length b)
 
 prop_append :: String -> String -> Bool
 prop_append a b = unpack (R.append (packRope a) (packRope b)) == a ++ b
+
+test_append_lf =
+    assertEqual (append (Leaf 6 Nothing "qwerty") (Leaf 5 Nothing "\nasdf"))
+                (Node 11 Nothing (Leaf 7 Nothing "qwerty\n") (Leaf 4 Nothing "asdf"))
 
 
 prop_unpack :: String -> Bool
@@ -109,7 +113,7 @@ prop_removeLength =
     forAll (choose (0, (P.length s - 1))) $ \i ->
         let r = packRope s
             r' = fromRight $ remove r i
-        in  R.length r - 1 == R.length r' && P.length s - 1 == P.length (unpack r')
+        in  R.length r - 1 == R.length r'
 
 
 test_remove1 = assertEqual (R.remove "hi there!" 0) (Right "i there!")
@@ -142,3 +146,12 @@ prop_words s = map unpack (R.words $ pack s) == P.words s
 prop_lines s = map unpack (R.lines $ pack s) == P.lines s
 prop_unwords s = unpack (R.unwords $ map pack s) == P.unwords s
 prop_unlines s = unpack (R.unlines $ map pack s) == P.unlines s
+
+prop_head = forAll (suchThat arbitrary ((>0) . P.length)) $ \s ->
+    R.head (packRope s) == P.head s
+prop_last = forAll (suchThat arbitrary ((>0) . P.length)) $ \s ->
+    R.last (packRope s) == P.last s
+prop_init = forAll (suchThat arbitrary ((>0) . P.length)) $ \s ->
+    R.unpack (R.init $ packRope s) == P.init s
+prop_tail = forAll (suchThat arbitrary ((>0) . P.length)) $ \s ->
+    R.unpack (R.tail $ packRope s) == P.tail s

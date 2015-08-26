@@ -12,8 +12,8 @@ import Ebitor.RopeUtils
 (=~*) :: String -> String -> Rope
 r1 =~* r2 = packRope r1 =~ packRope r2
 
-test_match1 = assertEqual ("asdf" =~* "^a.*") "asdf"
-test_match2 = assertEqual ("hi there" =~* "[[:alpha:]]+[[:space:]][[:alpha:]]+") "hi there"
+test_match1 = assertEqual "asdf" ("asdf" =~* "^a.*")
+test_match2 = assertEqual "hi there" ("hi there" =~* "[[:alpha:]]+[[:space:]][[:alpha:]]+")
 
-test_noMatch1 = assertEqual ("asdf" =~* "^b.*") ""
-test_noMatch2 = assertEqual ("hithere" =~* "[[:alpha:]]+[[:space:]][[:alpha:]]+") ""
+test_noMatch1 = assertEqual "" ("asdf" =~* "^b.*")
+test_noMatch2 = assertEqual "" ("hithere" =~* "[[:alpha:]]+[[:space:]][[:alpha:]]+")

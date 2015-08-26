@@ -7,88 +7,76 @@ import Data.Maybe (fromJust)
 import Test.Framework
 
 import Ebitor.Rope (Rope)
+import Ebitor.Rope.Cursor
+import Ebitor.Rope.Generic (buildCursorPos)
 import Ebitor.RopeUtils
 import qualified Ebitor.Rope as R
-import qualified Ebitor.Rope.Cursor as RC
-
-lastCursorPos :: R.Cursor -> Rope -> R.Cursor
-lastCursorPos = RC.lastCursorPos
 
 madWorld = "it's a mad mad mad mad world"
 
 patchOfOldSnow =
-    [ "\tA Patch of Old Snow"
-    , ""
-    , "There's a patch of old snow in a corner"
-    , "That I should have guessed"
-    , "Was a blow-away paper the rain"
-    , "Had brought to rest."
-    , ""
-    , "It is speckled with grime as if"
-    , "Small print overspread it,"
-    , "The news of a day I've forgotten--"
-    , "If I ever read it."
-    , ""
-    , "- Robert Frost"
+    [ "\tA Patch of Old Snow" -- 20
+    , "" -- 0
+    , "There's a patch of old snow in a corner" -- 39
+    , "That I should have guessed" -- 26
+    , "Was a blow-away paper the rain" -- 30
+    , "Had brought to rest." -- 20
+    , "" -- 0
+    , "It is speckled with grime as if" -- 31
+    , "Small print overspread it," -- 26
+    , "The news of a day I've forgotten--" -- 34
+    , "If I ever read it." -- 18
+    , "" -- 0
+    , "- Robert Frost" -- 14
     ]
 
 patchOfOldSnowCR = packRope $ intercalate "\r" patchOfOldSnow
 patchOfOldSnowLF = packRope $ intercalate "\n" patchOfOldSnow
 patchOfOldSnowCRLF = packRope $ intercalate "\r\n" patchOfOldSnow
 
-test_lastCursorPos1 =
-    assertEqual (R.Cursor (1, 29))
-                (lastCursorPos R.newCursor $ packRope madWorld)
-test_lastCursorPos2 =
-    assertEqual (R.Cursor (2, 2))
-                (lastCursorPos R.newCursor $ packRope (madWorld ++ "\nz"))
-test_lastCursorPos3 =
-    assertEqual (R.Cursor (2, 2))
-                (lastCursorPos R.newCursor $ packRope (madWorld ++ "\rz"))
-test_lastCursorPos4 =
-    assertEqual (R.Cursor (2, 2))
-                (lastCursorPos R.newCursor $ packRope (madWorld ++ "\r\nz"))
-test_lastCursorPos5 =
-    assertEqual (R.Cursor (2, 9))
-                (lastCursorPos R.newCursor $ packRope (madWorld ++ "\r\n\t"))
+test_positionForCursorCR =
+    assertEqual (27, R.Cursor (3, 6))
+                (fst $ R.positionForCursor patchOfOldSnowCR (R.Cursor (3, 6)))
 
-test_cursorForIndex =
-    assertEqual (Right $ R.Cursor (3, 6))
-                (RC.cursorForIndex patchOfOldSnowCR 27)
+test_positionForCursorLF =
+    assertEqual (27, R.Cursor (3, 6))
+                (fst $ R.positionForCursor patchOfOldSnowLF (R.Cursor (3, 6)))
 
-test_positionForCursorForwardCR =
-    assertEqual (R.Position (R.Cursor (3, 6), 27))
-                (R.positionForCursor R.newPosition patchOfOldSnowCR (R.Cursor (3, 6)))
-test_positionForCursorForwardLF =
-    assertEqual (R.Position (R.Cursor (3, 6), 27))
-                (R.positionForCursor R.newPosition patchOfOldSnowLF (R.Cursor (3, 6)))
-test_positionForCursorForwardCRLF =
-    assertEqual (R.Position (R.Cursor (3, 6), 29))
-                (R.positionForCursor R.newPosition patchOfOldSnowCRLF (R.Cursor (3, 6)))
+test_positionForCursorCRLF =
+    assertEqual (29, R.Cursor (3, 6))
+                (fst $ R.positionForCursor patchOfOldSnowCRLF (R.Cursor (3, 6)))
 
-test_positionForCursorForwardPastEOL =
-    assertEqual (R.Position (R.Cursor (3, 40), 61))
-                (R.positionForCursor R.newPosition patchOfOldSnowLF (R.Cursor (3, 100)))
-test_positionForCursorForwardInTab =
-    assertEqual (R.Position (R.Cursor (1, 1), 0))
-                (R.positionForCursor R.newPosition patchOfOldSnowLF (R.Cursor (1, 4)))
 
-cursorPos88 = R.positionForCursor R.newPosition patchOfOldSnowCR $ R.Cursor (8, 8)
-cursorPos88CRLF = R.positionForCursor R.newPosition patchOfOldSnowCRLF $ R.Cursor (8, 8)
+positionForCursorCRLF = fst $ R.positionForCursor text (R.Cursor (3, 6))
+  where
+    text =
+        let (_, r) = buildCursorPos newCursor patchOfOldSnowCRLF
+        in  r
 
-test_positionForCursorBackCR =
-    assertEqual (R.Position (R.Cursor (3, 6), 27))
-                (R.positionForCursor cursorPos88 patchOfOldSnowCR (R.Cursor (3, 6)))
-test_positionForCursorBackLF =
-    assertEqual (R.Position (R.Cursor (3, 6), 27))
-                (R.positionForCursor cursorPos88 patchOfOldSnowLF (R.Cursor (3, 6)))
-test_positionForCursorBackCRLF =
-    assertEqual (R.Position (R.Cursor (3, 6), 29))
-                (R.positionForCursor cursorPos88CRLF patchOfOldSnowCRLF (R.Cursor (3, 6)))
+test_positionForCursorPastEOL =
+    assertEqual (61, R.Cursor (3, 40))
+                (fst $ R.positionForCursor patchOfOldSnowLF (R.Cursor (3, 100)))
 
-test_positionForCursorBackPastEOL =
-    assertEqual (R.Position (R.Cursor (3, 40), 61))
-                (R.positionForCursor cursorPos88 patchOfOldSnowLF (R.Cursor (3, 100)))
-test_positionForCursorBackInTab =
-    assertEqual (R.Position (R.Cursor (1, 1), 0))
-                (R.positionForCursor cursorPos88 patchOfOldSnowLF (R.Cursor (1, 4)))
+test_positionForCursorAtEOL =
+    assertEqual (61, R.Cursor (3, 40))
+                (fst $ R.positionForCursor patchOfOldSnowLF (R.Cursor (3, 40)))
+
+test_positionForCursorBeforeLine1 =
+    assertEqual (0, R.Cursor (1, 1))
+                (fst $ R.positionForCursor patchOfOldSnowLF (R.Cursor (1, 0)))
+
+test_positionForCursorBeforeLine2 =
+    assertEqual (0, R.Cursor (1, 1))
+                (fst $ R.positionForCursor patchOfOldSnowLF (R.Cursor (1, -1000)))
+
+test_positionForCursorInTab =
+    assertEqual (1, R.Cursor (1, 9))
+                (fst $ R.positionForCursor patchOfOldSnowLF (R.Cursor (1, 4)))
+
+test_positionForCursorBeforeDocument =
+    assertEqual (0, R.Cursor (1, 1))
+                (fst $ R.positionForCursor patchOfOldSnowLF (R.Cursor (0, 4)))
+
+test_positionForCursorPastDocument =
+    assertEqual (R.length patchOfOldSnowLF, R.Cursor (13, 15))
+                (fst $ R.positionForCursor patchOfOldSnowLF (R.Cursor (1000, 1)))

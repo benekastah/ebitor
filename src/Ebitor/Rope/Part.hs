@@ -44,17 +44,29 @@ class RopePart s where
     drop :: Int -> s -> s
     drop i = pack . P.drop i . unpack
 
+    head :: s -> Char
+    head = P.head . unpack
+
+    last :: s -> Char
+    last = P.last . unpack
+
+    init :: s -> s
+    init = pack . P.init . unpack
+
+    tail :: s -> s
+    tail = pack . P.tail . unpack
+
     uncons :: s -> Maybe (Char, s)
-    uncons s =
-        case P.uncons $ unpack s of
-            Just (c, s') -> (c, pack s')
-            Nothing -> Nothing
+    uncons s = case unpack s of
+        "" -> Nothing
+        x:xs -> Just (x, pack xs)
 
     reverse :: s -> s
     reverse = pack . P.reverse . unpack
 
     null :: s -> Bool
     null = P.null . unpack
+
 
 instance RopePart String where
     pack = id
@@ -78,5 +90,9 @@ instance RopePart T.Text where
     drop = T.drop
     uncons = T.uncons
     reverse = T.reverse
+    head = T.head
+    last = T.last
+    init = T.init
+    tail = T.tail
 
     null = T.null

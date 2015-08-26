@@ -8,27 +8,16 @@ import Data.Ord (Ordering(..))
 import Data.String (IsString, fromString)
 import Prelude hiding (length, null, concat, splitAt, take, takeWhile, drop,
                        dropWhile, reverse, words, lines, unwords, unlines,
-                       span, break)
+                       span, break, head, last, init, tail)
 import qualified Data.Foldable as F
 import qualified Prelude as P
 
 import qualified Data.Text as T
 
+import Ebitor.Rope.Cursor
 import Ebitor.Rope.Part (RopePart)
-import qualified Ebitor.Rope.Part as RP
 import Ebitor.Utils (fromRight)
-
-newtype Cursor = Cursor (Int, Int)
-                 deriving (Show, Eq)
-
-instance Ord Cursor where
-    compare (Cursor (ln, col)) (Cursor (ln', col'))
-        | ln > ln' = GT
-        | ln' > ln = LT
-        | col > col' = GT
-        | col' > col = LT
-        | otherwise = EQ
-
+import qualified Ebitor.Rope.Part as RP
 
 data GenericRope a where
     Node :: Int -> Maybe Cursor -> GenericRope a -> GenericRope a -> GenericRope a
@@ -58,8 +47,16 @@ cursor (Node _ c _ _) = c
 cursor (Leaf _ c _) = c
 
 null :: GenericRope a -> Bool
-null (Leaf 0 _ _) = True
-null _ = False
+null = (0 ==) . length
+
+
+right :: GenericRope a -> Maybe (GenericRope a)
+right (Node _ _ _ r) = Just r
+right _ = Nothing
+
+left :: GenericRope a -> Maybe (GenericRope a)
+left (Node _ _ l _) = Just l
+left _ = Nothing
 
 -- Constructors
 empty :: RopePart a => GenericRope a
@@ -78,7 +75,7 @@ packWithSize size str
     | len <= size = Leaf len Nothing text
     | otherwise =
         let (a, b) = P.splitAt (quot len 2) str
-        in  Node len Nothing (packWithSize size a) (packWithSize size b)
+        in  append (packWithSize size a) (packWithSize size b)
   where
     len = P.length str
     text = RP.pack str
@@ -89,8 +86,14 @@ unpack (Leaf _ _ t) = RP.unpack t
 unpack (Node _ _ a b) = (unpack a) ++ (unpack b)
 
 -- Modifying
-append :: GenericRope a -> GenericRope a -> GenericRope a
-append a b = Node (length a + length b) Nothing a b
+append :: RopePart a => GenericRope a -> GenericRope a -> GenericRope a
+append a b = case uncons b of
+    -- If \n is the first character of b, move it to the end of a. This ensures
+    -- that \r\n will occur in the same node, a property our cursor functions
+    -- rely on.
+    Just (c@'\n', b') -> append (snoc a c) b'
+    Just _ -> Node (length a + length b) (cursor a) a (removeCursorPos b)
+    Nothing -> a
 
 bounded :: (Int -> Int -> Bool) -> GenericRope a -> Int -> Maybe IndexError
 bounded gt r i
@@ -103,11 +106,12 @@ boundedGt = bounded (>)
 boundedGte :: GenericRope a -> Int -> Maybe IndexError
 boundedGte = bounded (>=)
 
-update :: (GenericRope a -> Int -> Maybe IndexError)
-       -> GenericRope a
-       -> (GenericRope a -> Int -> GenericRope a)
-       -> Int
-       -> Either IndexError (GenericRope a)
+type UpdateFn a = GenericRope a
+               -> (GenericRope a -> Int -> GenericRope a)
+               -> Int
+               -> Either IndexError (GenericRope a)
+
+update :: RopePart a => (GenericRope a -> Int -> Maybe IndexError) -> UpdateFn a
 update bf r _ i | isJust err = Left $ fromJust err
     where err = bf r i
 update bf (Node _ _ a b) f i
@@ -121,7 +125,9 @@ update bf (Node _ _ a b) f i
     lenA = length a
 update bf r f i = Right $ f r i
 
+updateGt :: RopePart a => UpdateFn a
 updateGt = update boundedGt
+updateGte :: RopePart a => UpdateFn a
 updateGte = update boundedGte
 
 insert :: RopePart a => GenericRope a -> Int -> Char -> Either IndexError (GenericRope a)
@@ -165,11 +171,13 @@ splitAt i (Node _ _ a b)
         in  (r1, append r2 b)
     | otherwise =
         let (r1, r2) = splitAt (i - lenA) b
-        in  (append a r1, r2)
+        in  (append a r1, removeCursorPos r2)
     where lenA = length a
 splitAt i (Leaf len c t) =
     let (a, b) = RP.splitAt i t
-    in  (Leaf i Nothing a, Leaf (len - i) c b)
+        r1 = Leaf i c a
+        r2 = Leaf (len - i) Nothing b
+    in  (r1, r2)
 
 take :: RopePart a => Int -> GenericRope a -> GenericRope a
 take i = fst . splitAt i
@@ -194,15 +202,37 @@ break f r =
     in  (pack a, pack b)
 
 uncons :: RopePart a => GenericRope a -> Maybe (Char, GenericRope a)
-uncons (Node l _ a b) = case uncons a of
-    Just (c, a') -> Just (c, Node (l - 1) Nothing a' b)
-    Nothing -> Nothing
+uncons (Node _ _ a b)
+    | null a = uncons b
+    | otherwise = case uncons a of
+        Just (c, a') -> Just (c, append a' b)
+        Nothing -> Nothing
 uncons (Leaf l _ t) = case RP.uncons t of
-    Just (c, t') = Just (c, Leaf (l - 1) Nothing t')
+    Just (c, t') -> Just (c, Leaf (l - 1) Nothing t')
     Nothing -> Nothing
 
+head :: RopePart a => GenericRope a -> Char
+head (Node _ _ a _) = head a
+head (Leaf _ _ t) = RP.head t
+
+last :: RopePart a => GenericRope a -> Char
+last (Node _ _ _ b) = last b
+last (Leaf _ _ t) = RP.last t
+
+init :: RopePart a => GenericRope a -> GenericRope a
+init (Node _ _ a b)
+    | null b = init a
+    | otherwise = append a (init b)
+init (Leaf l c t) = Leaf (l - 1) c $ RP.init t
+
+tail :: RopePart a => GenericRope a -> GenericRope a
+tail (Node _ _ a b)
+    | null a = tail b
+    | otherwise = append (tail a) b
+tail (Leaf l c t) = Leaf (l - 1) c $ RP.tail t
+
 reverse :: RopePart a => GenericRope a -> GenericRope a
-reverse (Node l c a b) = Node l c (reverse b) (reverse a)
+reverse (Node l c a b) = append (reverse b) (reverse a)
 reverse (Leaf l c t) = Leaf l c $ RP.reverse t
 
 lines :: RopePart a => GenericRope a -> [GenericRope a]
@@ -230,65 +260,73 @@ index (Node _ _ a b) i
 index r@(Leaf l _ t) i = Right $ RP.index t i
 
 -- Cursors
-newCursor = Cursor (1, 1)
+charWidth :: Char -> Int
+charWidth '\t' = 8
+charWidth _ = 1
 
-addToLn :: Int -> Cursor -> Cursor
-addToLn i (Cursor (ln, col)) = Cursor (ln + i, col)
-
-addToCol :: Int -> Cursor -> Cursor
-addToCol i (Cursor (ln, col)) = Cursor (ln, col + i)
-
-line :: Cursor -> Int
-line (Cursor c) = fst c
-
-column :: Cursor -> Int
-column (Cursor c) = snd c
-
-moveCursor :: RopePart a => Cursor -> a -> (Cursor, a)
-moveCursor pos@(Cursor (ln, col)) s =
-    case RP.uncons s of
+advancePosition :: RopePart a => Position -> a -> (Position, a)
+advancePosition pos@(i, c@(Cursor (ln, col))) s =
+    let i' = i + 1
+    in  case RP.uncons s of
         Just ('\r', s') -> case RP.uncons s' of
-            Just ('\n', s'') -> (incLnCol pos, s'')
-            _ -> (incLnCol pos, s')
-        Just ('\n', s') -> (incLnCol pos, s')
-        Just ('\t', s') -> (addToCol 8 pos, s')
-        _ -> (incCol pos, s')
+            Just ('\n', s'') -> ((i' + 1, incLnCol c), s'')
+            _ -> ((i', incLnCol c), s')
+        Just ('\n', s') -> ((i', incLnCol c), s')
+        Just (ch, s') -> ((i', addToCol (charWidth ch) c), s')
         Nothing -> (pos, s)
   where
-    incLn = addToLn 1
-    incCol = addToCol 1
-    incLnCol (Cursor (ln, col)) = incLn $ Cursor (ln, 1)
+    incLnCol (Cursor (ln, col)) = addToLn 1 $ Cursor (ln, 1)
 
-lastCursorPos :: RopePart a => Cursor -> GenericRope a -> (Cursor, GenericRope a)
-lastCursorPos _ r@(Node _ (Just c) _ _) = (c, r)
-lastCursorPos _ r@(Leaf _ (Just c) _ _) = (c, r)
-lastCursorPos c (Node l Nothing a b) =
-    let (c', a') = lastCursorPos c a
-        (c'', b') = lastCursorPos c' b
-    in  (c'', Node l (Just c'') a' b')
-lastCursorPos c (Leaf l Nothing t) =
-    let c' = lastCursorPos' c t
-    in  (c', Leaf l (Just c') t)
+lastCursorPos :: RopePart a => GenericRope a -> Cursor
+lastCursorPos (Node l (Just c) a b) = lastCursorPos b
+lastCursorPos (Leaf l (Just c) t) = lastCursorPos' c t
   where
     lastCursorPos' :: RopePart a => Cursor -> a -> Cursor
     lastCursorPos' pos s
         | RP.null s = pos
         | otherwise =
-            let (pos', s') = moveCursor pos s
+            let ((_, pos'), s') = advancePosition (0, pos) s
             in  lastCursorPos' pos' s'
 
-indexForCursor :: RopePart a => GenericRope a -> Cursor -> (Int, GenericRope a)
-indexForCursor r@(Node l _ a b) q = case lastCursorPos newCursor a of
-    (c, a') | c == q -> (length a', Node l (cursor r) a' b)
-    (c, a') | c > q ->
-        let (i, a'') = indexForCursor a' q
-        in  (i, Node l (cursor r) a'' b)
-    (c, a') ->
-        let (_, r') = lastCursorPos newCursor (Node l (cursor r) a' b)
-            i = fst $ indexForCursor (right r')
-        in  (i, r')
+buildCursorPos :: RopePart a => Cursor -> GenericRope a -> (Cursor, GenericRope a)
+buildCursorPos _ r@(Node _ (Just c) _ _) = (c, r)
+buildCursorPos _ r@(Leaf _ (Just c) _) = (c, r)
+buildCursorPos c (Node l Nothing a b) =
+    let (c', a') = buildCursorPos c a
+        (_, b') = buildCursorPos (lastCursorPos a') b
+    in  (c', Node l (Just c') a' b')
+buildCursorPos c (Leaf l Nothing t) = (c, (Leaf l (Just c) t))
+
+removeCursorPos :: RopePart a => GenericRope a -> GenericRope a
+removeCursorPos (Node l _ a b) = append (removeCursorPos a) (removeCursorPos b)
+removeCursorPos (Leaf l _ t) = Leaf l Nothing t
+
+positionForCursor :: RopePart a => GenericRope a -> Cursor -> (Position, GenericRope a)
+positionForCursor r (Cursor (l, c))
+    | l <= 0 = ((0, Cursor (1, 1)), r)
+    | c <= 0 = positionForCursor r (Cursor (l, 1))
+positionForCursor r q | cursor r == Nothing =
+    positionForCursor (snd $ buildCursorPos newCursor r) q
+positionForCursor r@(Node l _ a b) q
+    | cursorB <= q =
+        let ((i, c), _) = positionForCursor b q
+            p = (i + length a, c)
+        in  (p, r)
+    | otherwise =
+        let (p, _) = positionForCursor a q
+        in  (p, r)
   where
-    right (Node _ _ _ r) = r
-indexForCursor r@(Leaf l (Just c) _) q
-    | c > q = (l, r)
-    | otherwise = error "nope"
+    cursorB = fromJust $ cursor b
+positionForCursor r@(Leaf l (Just c) t) q
+    | c > q = ((l, c), r)
+    | otherwise = (findPosition (0, c) t, r)
+  where
+    findPosition :: RopePart a => Position -> a -> Position
+    findPosition p@(_, c) t
+        | c == q || RP.null t = p
+        | line c == line q && column c > column q = p
+        | otherwise =
+            let (p'@(_, c'), t') = advancePosition p t
+            in  if line c == line q && not (line c' == line q)
+                then p
+                else findPosition p' t'

@@ -1,4 +1,3 @@
-{-# LANGUAGE GADTs #-}
 module Ebitor.Rope.Generic where
 
 import Data.Eq ()
@@ -10,6 +9,7 @@ import Prelude hiding (length, null, concat, splitAt, take, takeWhile, drop,
                        dropWhile, reverse, words, lines, unwords, unlines,
                        span, break, head, last, init, tail)
 import qualified Data.Foldable as F
+import qualified Data.List as L
 import qualified Prelude as P
 
 import qualified Data.Text as T
@@ -19,11 +19,10 @@ import Ebitor.Rope.Part (RopePart)
 import Ebitor.Utils (fromRight)
 import qualified Ebitor.Rope.Part as RP
 
-data GenericRope a where
-    Node :: Int -> Maybe Cursor -> GenericRope a -> GenericRope a -> GenericRope a
-    Leaf :: RopePart a => Int -> Maybe Cursor -> a -> GenericRope a
+data GenericRope a = Node Int (Maybe Cursor) (GenericRope a) (GenericRope a)
+                   | Leaf Int (Maybe Cursor) a
 
-instance Eq (GenericRope a) where
+instance RopePart a => Eq (GenericRope a) where
     a /= b = unpack a /= unpack b
 
 instance RopePart a => Show (GenericRope a) where
@@ -81,7 +80,7 @@ packWithSize size str
     text = RP.pack str
 
 -- Deconstructors
-unpack :: GenericRope a -> String
+unpack :: RopePart a => GenericRope a -> String
 unpack (Leaf _ _ t) = RP.unpack t
 unpack (Node _ _ a b) = (unpack a) ++ (unpack b)
 
@@ -236,7 +235,16 @@ reverse (Node l c a b) = append (reverse b) (reverse a)
 reverse (Leaf l c t) = Leaf l c $ RP.reverse t
 
 lines :: RopePart a => GenericRope a -> [GenericRope a]
-lines = map pack . P.lines . unpack
+lines r
+    | null r = []
+    | otherwise = case findIndex (\c -> c == '\r' || c == '\n') r of
+        Just i ->
+            let (x, xs) = splitAt i r
+            in  x:(lines $ removeLeadingNewline xs)
+        Nothing -> [r]
+  where
+    removeLeadingNewline r =
+        if unpack (slice r 0 2) == "\r\n" then drop 2 r else drop 1 r
 
 words :: RopePart a => GenericRope a -> [GenericRope a]
 words = map pack . P.words . unpack
@@ -248,7 +256,7 @@ unwords :: RopePart a => [GenericRope a] -> GenericRope a
 unwords = pack . P.unwords . map unpack
 
 -- Lookups
-index :: GenericRope a -> Int -> Either IndexError Char
+index :: RopePart a => GenericRope a -> Int -> Either IndexError Char
 index r i
     | i < 0 = Left IndexLessThanZero
     | i >= len = Left IndexOutOfBounds
@@ -257,7 +265,35 @@ index (Node _ _ a b) i
     | i < lenA = index a i
     | otherwise = index b (i - lenA)
     where lenA = length a
-index r@(Leaf l _ t) i = Right $ RP.index t i
+index r@(Leaf _ _ t) i = Right $ RP.index t i
+
+findIndex :: RopePart a => (Char -> Bool) -> GenericRope a -> Maybe Int
+findIndex f = L.findIndex f . unpack
+
+slice :: RopePart a => GenericRope a -> Int -> Int -> GenericRope a
+slice r start end
+    | start == end = empty
+    | start < 0 = slice r 0 end
+    | end < 0 = slice r start 0
+    | start > end = slice r end start
+    | start > length r = empty
+    | otherwise = slice' r start end
+  where
+    slice' :: RopePart a => GenericRope a -> Int -> Int -> GenericRope a
+    slice' (Node _ _ a b) start end
+        | start < lenA && end <= lenA = sliceA
+        | start < lenA && end > lenA = append sliceA sliceB
+        | otherwise = sliceB
+      where
+        lenA = length a
+        sliceA = slice' a start end
+        sliceB = slice' b (start - lenA) (end - lenA)
+    slice' r@(Leaf l _ t) start end
+        | start < 0 = slice' r 0 end
+        | end < 0 = slice' r start 0
+        | start == 0 && end > l = r
+        | otherwise = Leaf (RP.length part) Nothing part
+        where part = RP.take (end - start) (RP.drop start t)
 
 -- Cursors
 charWidth :: Char -> Int
@@ -301,6 +337,7 @@ removeCursorPos :: RopePart a => GenericRope a -> GenericRope a
 removeCursorPos (Node l _ a b) = append (removeCursorPos a) (removeCursorPos b)
 removeCursorPos (Leaf l _ t) = Leaf l Nothing t
 
+
 positionForCursor :: RopePart a => GenericRope a -> Cursor -> (Position, GenericRope a)
 positionForCursor r (Cursor (l, c))
     | l <= 0 = ((0, Cursor (1, 1)), r)
@@ -330,3 +367,26 @@ positionForCursor r@(Leaf l (Just c) t) q
             in  if line c == line q && not (line c' == line q)
                 then p
                 else findPosition p' t'
+
+
+positionForIndex :: RopePart a => GenericRope a -> Int -> (Position, GenericRope a)
+positionForIndex r i | i < 0 = ((0, Cursor (1, 1)), r)
+positionForIndex r q | cursor r == Nothing =
+    positionForIndex (snd $ buildCursorPos newCursor r) q
+positionForIndex r@(Node l _ a b) q
+    | q < lenA =
+        let (p, _) = positionForIndex a q
+        in  (p, r)
+    | otherwise =
+        let ((i, c), _) = positionForIndex b $ q - lenA
+            p = (i + lenA, c)
+        in  (p, r)
+    where lenA = length a
+positionForIndex r@(Leaf l (Just c) t) q = (findPosition (0, c) t, r)
+  where
+    findPosition :: RopePart a => Position -> a -> Position
+    findPosition p@(i, _) t
+        | i >= q || RP.null t = p
+        | otherwise =
+            let (p', t') = advancePosition p t
+            in  findPosition p' t'

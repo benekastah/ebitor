@@ -8,5 +8,8 @@
 build:
 	stack build
 
-run: build
+eb: build
 	stack exec eb
+
+eb-server: build
+	stack exec eb-server

@@ -1,7 +1,10 @@
+{-# LANGUAGE DeriveGeneric #-}
 module Ebitor.Rope.Cursor where
 
+import GHC.Generics
+
 newtype Cursor = Cursor (Int, Int)
-                 deriving (Show, Eq)
+                 deriving (Show, Eq, Generic)
 
 type Position = (Int, Cursor)
 
@@ -30,8 +33,8 @@ line = fst . unwrap
 column :: Cursor -> Int
 column = snd . unwrap
 
-newPosition :: Int -> Cursor -> Position
-newPosition = (,)
+newPosition :: Position
+newPosition = (0, newCursor)
 
 positionIndex :: Position -> Int
 positionIndex = fst

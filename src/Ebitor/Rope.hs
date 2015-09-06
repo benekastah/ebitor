@@ -24,10 +24,14 @@ module Ebitor.Rope
     , null
     , pack
     , packWithSize
+    , positionCursor
     , positionForCursor
+    , positionForIndex
+    , positionIndex
     , remove
     , reverse
     , singleton
+    , slice
     , snoc
     , splitAt
     , tail
@@ -48,7 +52,8 @@ import qualified Prelude as P
 
 import qualified Data.Text as T
 
-import Ebitor.Rope.Cursor (Cursor(..), Position, newCursor, newPosition)
+import Ebitor.Rope.Cursor (Cursor(..), Position, newCursor, newPosition,
+                           positionIndex, positionCursor)
 import Ebitor.Rope.Generic (GenericRope(..), IndexError(..), charWidth)
 import qualified Ebitor.Rope.Cursor as R
 import qualified Ebitor.Rope.Generic as R
@@ -154,5 +159,11 @@ tail = R.tail
 index :: Rope -> Int -> Either IndexError Char
 index = R.index
 
+slice :: Rope -> Int -> Int -> Rope
+slice = R.slice
+
 positionForCursor :: Rope -> Cursor -> (Position, Rope)
 positionForCursor = R.positionForCursor
+
+positionForIndex :: Rope -> Int -> (Position, Rope)
+positionForIndex = R.positionForIndex

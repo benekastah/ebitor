@@ -59,7 +59,8 @@ instance RopePart a => RegexLike Regex (GenericRope a) where
         map (fmap (\ol@(off,len) -> (R.take len (R.drop off source),ol)))
             (matchAll regex source)
 
-compile :: CompOption -- ^ Flags (summed together)
+compile :: RopePart a
+        => CompOption -- ^ Flags (summed together)
         -> ExecOption -- ^ Flags (summed together)
         -> (GenericRope a) -- ^ The regular expression to compile
         -> Either String Regex -- ^ Returns: the compiled regular expression

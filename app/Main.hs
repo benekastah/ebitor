@@ -36,7 +36,7 @@ eventLoop :: Vty -> Socket -> IO () -> IO ()
 eventLoop vty sock loop = do
     e <- nextEvent vty
     case e of
-        EvKey KEsc [] -> return ()
+        EvKey (KChar 'q') [MCtrl] -> return ()
         _ -> do
             send sock $ encodeCommand $ SendKeys [e]
             loop

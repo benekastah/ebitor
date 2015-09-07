@@ -2,10 +2,16 @@
 module Ebitor.Edit
     ( Editor(..)
     , backspace
+    , cursorDown
+    , cursorLeft
+    , cursorMove
+    , cursorRight
+    , cursorUp
     , editorCursor
     , editorIndex
     , insertChar
     , insertNewline
+    , newEditor
     ) where
 
 import GHC.Generics
@@ -19,6 +25,11 @@ data Editor = Editor
     , position :: Position
     }
     deriving (Generic, Show)
+
+newEditor :: Editor
+newEditor = Editor { filePath = Nothing
+                   , rope = R.empty
+                   , position = R.newPosition }
 
 unreachable = error "unreachable"
 
@@ -46,3 +57,21 @@ backspace editor = case R.remove (rope editor) idx of
   where
     idx = editorIndex editor - 1
     crlf = R.slice (rope editor) (idx - 1) (idx + 1) == "\r\n"
+
+cursorMove :: (Cursor -> Cursor) -> Editor -> Editor
+cursorMove f editor =
+    let (_, c) = position editor
+        (p, r') = R.positionForCursor (rope editor) (f c)
+    in  editor { rope = r', position = p }
+
+cursorUp :: Editor -> Editor
+cursorUp = cursorMove $ \(Cursor (ln, col)) -> Cursor (ln - 1, col)
+
+cursorDown :: Editor -> Editor
+cursorDown = cursorMove $ \(Cursor (ln, col)) -> Cursor (ln + 1, col)
+
+cursorRight :: Editor -> Editor
+cursorRight = cursorMove $ \(Cursor (ln, col)) -> Cursor (ln, col + 1)
+
+cursorLeft :: Editor -> Editor
+cursorLeft = cursorMove $ \(Cursor (ln, col)) -> Cursor (ln, col - 1)

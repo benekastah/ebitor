@@ -1,20 +1,24 @@
 module Ebitor.CommandParser
-    ( parseCommand
+    ( Command(..)
+    , parseCommand
     , syntaxNodeToText
     ) where
 
+import Control.Applicative (pure)
+import Control.Monad (mzero)
 import Data.Char
 
+import Data.Aeson (ToJSON, FromJSON)
 import Text.Parsec
 import Text.Parsec.Char
-import Text.Parsec.Text
-import qualified Data.Text as T
-import qualified Data.Text.Read as T
+import Text.Parsec.ByteString.Lazy
+import qualified Data.Text.Lazy as T
+import qualified Data.Text.Lazy.Encoding as T
 
-data CmdSyntaxNode = CmdIdentifier T.Text
+data Command = CmdIdentifier T.Text
                    | CmdNumber Double
                    | CmdString T.Text
-                   | CmdCall T.Text [CmdSyntaxNode]
+                   | CmdCall T.Text [Command]
                    deriving (Show)
 
 syntaxNodeToText (CmdIdentifier t) = t
@@ -24,26 +28,26 @@ syntaxNodeToText (CmdNumber n) =
   where
     floorN = floor n
 
-identifier :: Parser CmdSyntaxNode
+identifier :: Parser Command
 identifier = do
     start <- letter
     end <- many (alphaNum <|> oneOf "_-")
     return $ CmdIdentifier $ T.pack (start:end)
 
 -- Numbers
-int :: Parser CmdSyntaxNode
+int :: Parser Command
 int = do
     n <- many1 digit
     return $ CmdNumber $ read n
 
-dec :: Parser CmdSyntaxNode
+dec :: Parser Command
 dec = do
     start <- many digit
     d <- char '.'
     end <- many1 digit
     return $ CmdNumber (read $ '0':(start ++ (d:end)))
 
-num' :: Parser CmdSyntaxNode
+num' :: Parser Command
 num' = try dec <|> int
 
 negNum = do
@@ -59,7 +63,7 @@ escapedChar = do
     char '\\'
     space <|> char '\\'
 
-bareString :: Parser CmdSyntaxNode
+bareString :: Parser Command
 bareString = do
     t <- many1 $ escapedChar <|> nonSpace
     return $ CmdString $ T.pack t
@@ -69,7 +73,7 @@ str = bareString
 -- General
 expression = num <|> str
 
-commandParser :: Parser CmdSyntaxNode
+commandParser :: Parser Command
 commandParser = do
     CmdIdentifier id <- identifier
     spaces
@@ -77,5 +81,12 @@ commandParser = do
     eof
     return $ CmdCall id args
 
-parseCommand :: T.Text -> Either ParseError CmdSyntaxNode
+parseCommand :: T.Text -> Either ParseError Command
 parseCommand = parse commandParser "User command"
+
+instance FromJSON Command where
+    parseJSON = withText "String" doParse
+      where
+        doParse s = case parseCommand $ T.encodeUtf8 $ T.fromStrict s of
+            Right cmd -> pure cmd
+            Left e -> mzero

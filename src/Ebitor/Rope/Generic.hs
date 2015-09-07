@@ -12,6 +12,7 @@ import qualified Data.Foldable as F
 import qualified Data.List as L
 import qualified Prelude as P
 
+import Data.Aeson (FromJSON, ToJSON)
 import qualified Data.Text as T
 
 import Ebitor.Rope.Cursor
@@ -30,6 +31,12 @@ instance RopePart a => Show (GenericRope a) where
 
 instance RopePart a => IsString (GenericRope a) where
     fromString = pack
+
+instance RopePart a => FromJSON (RG.GenericRope a) where
+    parseJSON = withText "String" $ pure . RG.pack . T.unpack
+
+instance RopePart a => ToJSON (RG.GenericRope a) where
+    toJSON r = toJSON $ RG.unpack r
 
 
 data IndexError = IndexLessThanZero | IndexOutOfBounds

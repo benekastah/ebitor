@@ -3,8 +3,13 @@ module Ebitor.Rope.Cursor where
 
 import GHC.Generics
 
+import Data.Aeson (FromJSON, ToJSON)
+
 newtype Cursor = Cursor (Int, Int)
                  deriving (Show, Eq, Generic)
+
+instance FromJSON Cursor
+instance ToJSON Cursor
 
 type Position = (Int, Cursor)
 

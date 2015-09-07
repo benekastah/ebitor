@@ -16,6 +16,8 @@ module Ebitor.Edit
 
 import GHC.Generics
 
+import Data.Aeson (FromJSON, ToJSON)
+
 import Ebitor.Rope (Rope, Position, Cursor(..), positionIndex, positionCursor)
 import qualified Ebitor.Rope as R
 
@@ -25,6 +27,9 @@ data Editor = Editor
     , position :: Position
     }
     deriving (Generic, Show)
+
+instance FromJSON Editor
+instance ToJSON Editor
 
 newEditor :: Editor
 newEditor = Editor { filePath = Nothing

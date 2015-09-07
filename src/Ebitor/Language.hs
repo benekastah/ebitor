@@ -1,40 +1,19 @@
-module Ebitor.Language where
+module Ebitor.Language
+    ( parseKeyEvents
+    ) where
 
 import Control.Monad
 import Data.Char
 import Data.Foldable (foldr', foldr1)
 import Data.List (nub)
+import Data.Maybe
 
 import Text.Parsec
 import Text.Parsec.Char
 import Text.Parsec.ByteString.Lazy
 import qualified Data.ByteString.Lazy as B
 
--- | Representations of non-modifier keys.
---
--- * KFun is indexed from 0 to 63.
---
--- * KUpLeft, KUpRight, KDownLeft, KDownRight, KCenter support varies by
--- keyboard.
---
--- * Actually, support for most of these but KEsc, KChar, KBS, and KEnter vary
--- by keyboard.
---
--- Stolen from https://github.com/coreyoconnor/vty/blob/master/src/Graphics/Vty/Input/Events.hs
-data Key = KEsc  | KChar Char | KBS | KEnter
-         | KLeft | KRight | KUp | KDown
-         | KUpLeft | KUpRight | KDownLeft | KDownRight | KCenter
-         | KFun Int | KBackTab | KPrtScr | KPause | KIns
-         | KHome | KPageUp | KDel | KEnd | KPageDown | KBegin | KMenu
-    deriving (Eq, Show, Read, Ord)
-
--- | Modifier keys.
---
--- Stolen from https://github.com/coreyoconnor/vty/blob/master/src/Graphics/Vty/Input/Events.hs
-data Modifier = MShift | MCtrl | MMeta | MAlt
-    deriving (Eq, Show, Read, Ord)
-
-type KeyCombo = (Key, [Modifier])
+import Ebitor.Events
 
 ichar :: Char -> Parser Char
 ichar c = char (toLower c) <|> char (toUpper c)
@@ -118,6 +97,11 @@ function = do
     d <- many1 digit
     return $ KFun $ read d
 
+backTab :: Parser Key
+backTab = do
+    istring "BackTab"
+    return KBackTab
+
 home :: Parser Key
 home = do
     istring "Home"
@@ -170,12 +154,10 @@ menu = do
 
 charKey :: Parser Key
 charKey = do
-    angle <- optionMaybe $ string "\\<"
-    case angle of
-        Just _ -> return $ KChar '<'
-        Nothing -> do
-            c <- anyChar
-            return $ KChar c
+    c <- try (escaped $ char '<') <|> try (escaped $ char '\\') <|> noneOf "<"
+    return $ KChar c
+  where
+    escaped c = do { char '\\' ; c }
 
 specialKey :: Parser Key
 specialKey = tryChoice [ escape, enter, backspace, up, down, left, right, upLeft
@@ -206,27 +188,21 @@ alt = do
 modifier :: Parser Modifier
 modifier = tryChoice [shift, control, meta, alt]
 
-keyToKeyCombo :: Key -> KeyCombo
-keyToKeyCombo (KChar c) | isUpper c = (KChar c, [MShift])
-keyToKeyCombo k = (k, [])
-
-modifiedKeyCombo :: Parser KeyCombo
+modifiedKeyCombo :: Parser Event
 modifiedKeyCombo = do
     mods <- many1 $ try modifier'
     key <- tryChoice [specialKey, charKey]
-    let (key', mods') = keyToKeyCombo key
-    return (key', nub (mods ++ mods'))
+    return $ EvKey key $ nub mods
   where
     modifier' = do { m <- modifier ; char '-' ; return m }
 
-
-unmodifiedKeyCombo :: Parser KeyCombo
+unmodifiedKeyCombo :: Parser Event
 unmodifiedKeyCombo = do
     key <- tryChoice [bracketed specialKey, charKey]
-    return $ keyToKeyCombo key
+    return $ EvKey key []
 
-keyCombo :: Parser KeyCombo
+keyCombo :: Parser Event
 keyCombo = tryChoice [bracketed modifiedKeyCombo, unmodifiedKeyCombo]
 
-parseKeyCombos :: B.ByteString -> Either ParseError [KeyCombo]
-parseKeyCombos = parse (many1 keyCombo) "Key combos"
+parseKeyEvents :: B.ByteString -> Either ParseError [Event]
+parseKeyEvents = parse (many1 keyCombo) "Key combos"

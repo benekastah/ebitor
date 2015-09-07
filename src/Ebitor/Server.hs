@@ -19,6 +19,7 @@ import Data.ByteString.Lazy as B
 
 import Ebitor.Command
 import Ebitor.Edit
+import Ebitor.Events
 import qualified Ebitor.Rope as R
 
 type Msg = (Int, B.ByteString)
@@ -85,6 +86,10 @@ runConn (sock, _) chan nr = do
     close sock
 
 handleCommand :: Command -> Editor -> Editor
-handleCommand (InsertChar c) = insertChar c
-handleCommand InsertNewline = insertNewline
-handleCommand Backspace = backspace
+handleCommand (SendKeys keys) = handleKeys keys
+
+handleKeys :: [Event] -> Editor -> Editor
+handleKeys [EvKey (KChar c) []] = insertChar c
+handleKeys [EvKey KEnter []] = insertNewline
+handleKeys [EvKey KBS []] = backspace
+handleKeys _ = id

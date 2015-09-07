@@ -17,6 +17,9 @@ import qualified Data.ByteString.Lazy as B
 import qualified Data.Text as T
 
 import Ebitor.Edit
+import Ebitor.Events
+import Ebitor.Events.JSON
+import Ebitor.Language
 import Ebitor.Rope.Cursor (Cursor())
 import Ebitor.Rope.Part (RopePart)
 import qualified Ebitor.Rope.Generic as RG
@@ -24,28 +27,28 @@ import qualified Ebitor.Rope.Generic as RG
 instance FromJSON Cursor
 instance ToJSON Cursor
 
+instance FromJSON Editor
+instance ToJSON Editor
+
 instance RopePart a => FromJSON (RG.GenericRope a) where
     parseJSON = withText "String" $ pure . RG.pack . T.unpack
 
 instance RopePart a => ToJSON (RG.GenericRope a) where
     toJSON r = toJSON $ RG.unpack r
 
-data Command = InsertChar Char
-             | InsertNewline
-             | Backspace
-             deriving (Generic, Show)
 
+data Command = SendKeys [Event]
+             deriving (Generic, Show)
 instance FromJSON Command
 instance ToJSON Command
+
 
 data Response = Screen Editor
               | InvalidCommand
               deriving (Generic, Show)
-
-instance FromJSON Editor
-instance ToJSON Editor
 instance FromJSON Response
 instance ToJSON Response
+
 
 encodeCommand :: Command -> B.ByteString
 encodeCommand = encode

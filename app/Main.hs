@@ -37,15 +37,9 @@ eventLoop vty sock loop = do
     e <- nextEvent vty
     case e of
         EvKey KEsc [] -> return ()
-        EvKey (KChar c) [] -> runCommand $ InsertChar c
-        EvKey KEnter [] -> runCommand $ InsertNewline
-        EvKey KBS [] -> runCommand $ Backspace
-        _ -> loop
-  where
-    runCommand :: Command -> IO ()
-    runCommand cmd = do
-        send sock $ encodeCommand cmd
-        loop
+        _ -> do
+            send sock $ encodeCommand $ SendKeys [e]
+            loop
 
 getVty :: IO Vty
 getVty = do

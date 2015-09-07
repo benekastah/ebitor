@@ -7,6 +7,7 @@ import Data.Maybe
 import Network.Socket hiding (recv, send, shutdown)
 import Network.Socket.ByteString.Lazy (recv, send)
 import System.IO
+import System.Posix.Signals as Sig
 
 import Graphics.Vty
 import qualified Graphics.Vty.Picture as V
@@ -37,9 +38,7 @@ eventLoop vty sock loop = do
     e <- nextEvent vty
     case e of
         EvKey (KChar 'q') [MCtrl] -> return ()
-        _ -> do
-            send sock $ encodeCommand $ SendKeys [e]
-            loop
+        _ -> do { send sock $ encodeCommand $ SendKeys [e] ; loop }
 
 getVty :: IO Vty
 getVty = do
@@ -57,6 +56,9 @@ getSocket = do
     return sock
 
 main = do
+    -- Not working. Why?
+    _ <- installHandler sigTSTP Sig.Default Nothing
+
     vty <- getVty
 
     runServerThread defaultSockAddr
@@ -69,6 +71,9 @@ main = do
             handleResponse (fromJust resp) vty
         loop
 
+    -- send sock $ encodeCommand $ EditFile "app/Main.hs"
+
     fix $ eventLoop vty sock
-    close sock
     shutdown vty
+
+    close sock

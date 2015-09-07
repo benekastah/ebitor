@@ -38,6 +38,8 @@ instance RopePart a => ToJSON (RG.GenericRope a) where
 
 
 data Command = SendKeys [Event]
+             | EditFile FilePath
+             | WriteFile
              deriving (Generic, Show)
 instance FromJSON Command
 instance ToJSON Command

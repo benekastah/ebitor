@@ -15,7 +15,7 @@ import Network.Socket hiding (recv, send)
 import Network.Socket.ByteString.Lazy (recv, send)
 import System.IO
 
-import Data.ByteString.Lazy as B
+import qualified Data.ByteString.Lazy as B
 
 import Ebitor.Command
 import Ebitor.Edit
@@ -23,9 +23,12 @@ import Ebitor.Events
 import qualified Ebitor.Rope as R
 
 type Msg = (Int, B.ByteString)
-type KeyHandler = [Event] -> Session -> Session
+type KeyHandler = [Event] -> Session -> IO Session
 
 data Session = Session { editor :: Editor, keyHandler :: KeyHandler }
+
+updateEditor :: (Editor -> Editor) -> Session -> Session
+updateEditor f s = s { editor = f (editor s) }
 
 defaultSockAddr = SockAddrInet 6879 iNADDR_ANY
 
@@ -82,7 +85,7 @@ runConn (sock, _) chan nr = do
     handle (\(SomeException _) -> return ()) $ fix $ \loop -> do
         cmd <- liftM decodeCommand $ recv sock 4096
         when (isJust cmd) $ do
-            sess <- liftM (handleCommand $ fromJust cmd) $ readIORef sessionRef
+            sess <- readIORef sessionRef >>= handleCommand (fromJust cmd)
             writeIORef sessionRef sess
             send sock $ encodeResponse $ Screen $ editor sess
             return ()
@@ -90,20 +93,24 @@ runConn (sock, _) chan nr = do
     killThread reader
     close sock
 
-handleCommand :: Command -> Session -> Session
+handleCommand :: Command -> Session -> IO Session
 handleCommand (SendKeys keys) s = keyHandler s keys s
+handleCommand (EditFile fname) s = do
+    r <- liftM R.pack $ readFile fname
+    let e = Editor { filePath = Just fname, rope = r, position = R.newPosition }
+    return $ s { editor = e }
 
 normalMode :: KeyHandler
-normalMode [EvKey (KChar 'h') []] s = s { editor = cursorLeft (editor s) }
-normalMode [EvKey (KChar 'j') []] s = s { editor = cursorDown (editor s) }
-normalMode [EvKey (KChar 'k') []] s = s { editor = cursorUp (editor s) }
-normalMode [EvKey (KChar 'l') []] s = s { editor = cursorRight (editor s) }
-normalMode [EvKey (KChar 'i') []] s = s { keyHandler = insertMode }
-normalMode _ s = s
+normalMode [EvKey (KChar 'h') []] = return . updateEditor cursorLeft
+normalMode [EvKey (KChar 'j') []] = return . updateEditor cursorDown
+normalMode [EvKey (KChar 'k') []] = return . updateEditor cursorUp
+normalMode [EvKey (KChar 'l') []] = return . updateEditor cursorRight
+normalMode [EvKey (KChar 'i') []] = \s -> return $ s { keyHandler = insertMode }
+normalMode _ = return
 
 insertMode :: KeyHandler
-insertMode [EvKey KEsc []] s = s { keyHandler = normalMode }
-insertMode [EvKey (KChar c) []] s = s { editor = insertChar c (editor s) }
-insertMode [EvKey KEnter []] s = s { editor = insertNewline (editor s) }
-insertMode [EvKey KBS []] s = s { editor = backspace (editor s) }
-insertMode _ s = s
+insertMode [EvKey KEsc []] = \s -> return $ s { keyHandler = normalMode }
+insertMode [EvKey (KChar c) []] = return . updateEditor (insertChar c)
+insertMode [EvKey KEnter []] = return . updateEditor insertNewline
+insertMode [EvKey KBS []] = return . updateEditor backspace
+insertMode _ = return

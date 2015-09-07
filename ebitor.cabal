@@ -15,9 +15,10 @@ cabal-version:       >=1.10
 
 library
     hs-source-dirs:      src
-    exposed-modules:     Ebitor.CommandParser
-                       , Ebitor.Command
+    exposed-modules:     Ebitor.Command
+                       -- , Ebitor.CommandParser
                        , Ebitor.Edit
+                       , Ebitor.Language
                        , Ebitor.Rope
                        , Ebitor.Rope.Cursor
                        , Ebitor.Rope.Generic

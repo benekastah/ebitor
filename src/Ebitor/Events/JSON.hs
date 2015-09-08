@@ -4,6 +4,8 @@ module Ebitor.Events.JSON
     , Modifier(..)
     , Button(..)
     , Event(..)
+    , eventToString
+    , eventsToString
     ) where
 
 import Control.Applicative (pure)
@@ -60,12 +62,15 @@ eventToString (EvKey k mods) =
     let m = intercalate "-" $ map modifierToString mods
     in  "<" ++ m ++ "-" ++ keyToString k ++ ">"
 
+eventsToString :: [Event] -> String
+eventsToString evs = foldl' (++) "" $ map eventToString evs
+
 instance FromJSON [Event] where
     parseJSON = withText "String" doParse
       where
-        doParse s = case parseKeyEvents $ T.encodeUtf8 $ T.fromStrict s of
+        doParse s = case parseKeyEvents s of
             Right evs -> pure evs
             Left e -> mzero
 
 instance ToJSON [Event] where
-    toJSON evs = toJSON $ foldl' (++) "" $ map eventToString evs
+    toJSON evs = toJSON $ eventsToString evs

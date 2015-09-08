@@ -1,6 +1,7 @@
-module Ebitor.CommandParser
-    ( Command(..)
+module Ebitor.Command.Parser
+    ( CmdSyntaxNode(..)
     , parseCommand
+    , parseCommand'
     , syntaxNodeToText
     ) where
 
@@ -8,17 +9,19 @@ import Control.Applicative (pure)
 import Control.Monad (mzero)
 import Data.Char
 
-import Data.Aeson (ToJSON, FromJSON)
+import Data.Aeson
 import Text.Parsec
 import Text.Parsec.Char
-import Text.Parsec.ByteString.Lazy
-import qualified Data.Text.Lazy as T
-import qualified Data.Text.Lazy.Encoding as T
+import Text.Parsec.Text
+import qualified Data.ByteString.Lazy as B
+import qualified Data.Text as T
+import qualified Data.Text.Lazy as TL
+import qualified Data.Text.Lazy.Encoding as TL
 
-data Command = CmdIdentifier T.Text
+data CmdSyntaxNode = CmdIdentifier T.Text
                    | CmdNumber Double
                    | CmdString T.Text
-                   | CmdCall T.Text [Command]
+                   | CmdCall T.Text [CmdSyntaxNode]
                    deriving (Show)
 
 syntaxNodeToText (CmdIdentifier t) = t
@@ -28,26 +31,26 @@ syntaxNodeToText (CmdNumber n) =
   where
     floorN = floor n
 
-identifier :: Parser Command
+identifier :: Parser CmdSyntaxNode
 identifier = do
     start <- letter
     end <- many (alphaNum <|> oneOf "_-")
     return $ CmdIdentifier $ T.pack (start:end)
 
 -- Numbers
-int :: Parser Command
+int :: Parser CmdSyntaxNode
 int = do
     n <- many1 digit
     return $ CmdNumber $ read n
 
-dec :: Parser Command
+dec :: Parser CmdSyntaxNode
 dec = do
     start <- many digit
     d <- char '.'
     end <- many1 digit
     return $ CmdNumber (read $ '0':(start ++ (d:end)))
 
-num' :: Parser Command
+num' :: Parser CmdSyntaxNode
 num' = try dec <|> int
 
 negNum = do
@@ -63,7 +66,7 @@ escapedChar = do
     char '\\'
     space <|> char '\\'
 
-bareString :: Parser Command
+bareString :: Parser CmdSyntaxNode
 bareString = do
     t <- many1 $ escapedChar <|> nonSpace
     return $ CmdString $ T.pack t
@@ -73,7 +76,7 @@ str = bareString
 -- General
 expression = num <|> str
 
-commandParser :: Parser Command
+commandParser :: Parser CmdSyntaxNode
 commandParser = do
     CmdIdentifier id <- identifier
     spaces
@@ -81,12 +84,15 @@ commandParser = do
     eof
     return $ CmdCall id args
 
-parseCommand :: T.Text -> Either ParseError Command
+parseCommand :: T.Text -> Either ParseError CmdSyntaxNode
 parseCommand = parse commandParser "User command"
 
-instance FromJSON Command where
+parseCommand' :: B.ByteString -> Either ParseError CmdSyntaxNode
+parseCommand' = parseCommand . TL.toStrict . TL.decodeUtf8
+
+instance FromJSON CmdSyntaxNode where
     parseJSON = withText "String" doParse
       where
-        doParse s = case parseCommand $ T.encodeUtf8 $ T.fromStrict s of
+        doParse s = case parseCommand s of
             Right cmd -> pure cmd
             Left e -> mzero

@@ -1,5 +1,12 @@
+{-# LANGUAGE DeriveGeneric #-}
 module Ebitor.Server
-    ( runServer
+    ( Command(..)
+    , Response(..)
+    , decodeCommand
+    , decodeResponse
+    , encodeCommand
+    , encodeResponse
+    , runServer
     , runServerThread
     , defaultSockAddr
     ) where
@@ -11,21 +18,49 @@ import Control.Monad
 import Control.Monad.Fix (fix)
 import Data.IORef
 import Data.Maybe
+import GHC.Generics
+import GHC.Int (Int64)
 import Network.Socket hiding (recv, send)
 import Network.Socket.ByteString.Lazy (recv, send)
 import System.IO
+import qualified Data.Map as M
 
+import Data.Aeson
 import qualified Data.ByteString.Lazy as B
+import qualified Data.Text as T
 
-import Ebitor.Command
 import Ebitor.Edit
-import Ebitor.Events
+import Ebitor.Events.JSON
+import Ebitor.Language
 import qualified Ebitor.Rope as R
 
 type Msg = (Int, B.ByteString)
-type KeyHandler = [Event] -> Session -> IO Session
 
-data Session = Session { editor :: Editor, keyHandler :: KeyHandler }
+data Command = SendKeys [Event]
+             | EditFile FilePath
+             deriving (Generic, Show)
+instance FromJSON Command
+instance ToJSON Command
+encodeCommand :: Command -> B.ByteString
+encodeCommand = encode
+decodeCommand :: B.ByteString -> Maybe Command
+decodeCommand = decode
+
+
+data Response = Screen Editor
+              | InvalidCommand
+              deriving (Generic, Show)
+instance FromJSON Response
+instance ToJSON Response
+encodeResponse :: Response -> B.ByteString
+encodeResponse = encode
+decodeResponse :: B.ByteString -> Maybe Response
+decodeResponse = decode
+
+type KeyHandler = [Event] -> Session -> IO Session
+data Session = Session
+               { editor :: Editor
+               , keyHandler :: KeyHandler }
 
 updateEditor :: (Editor -> Editor) -> Session -> Session
 updateEditor f s = s { editor = f (editor s) }
@@ -71,6 +106,9 @@ newSession :: Session
 newSession = Session { editor = newEditor
                      , keyHandler = normalMode }
 
+sendResponse :: Socket -> Response -> IO Int64
+sendResponse sock = send sock . encodeResponse
+
 runConn :: (Socket, SockAddr) -> Chan Msg -> Int -> IO ()
 runConn (sock, _) chan nr = do
     let broadcast msg = writeChan chan (nr, msg)
@@ -84,17 +122,22 @@ runConn (sock, _) chan nr = do
         loop
     handle (\(SomeException _) -> return ()) $ fix $ \loop -> do
         cmd <- liftM decodeCommand $ recv sock 4096
-        when (isJust cmd) $ do
-            sess <- readIORef sessionRef >>= handleCommand (fromJust cmd)
-            writeIORef sessionRef sess
-            send sock $ encodeResponse $ Screen $ editor sess
-            return ()
+        case cmd of
+            Just cmd -> do
+                sess <- readIORef sessionRef >>= handleCommand cmd
+                writeIORef sessionRef sess
+                sendResponse' sock $ Screen $ editor sess
+            Nothing -> sendResponse' sock InvalidCommand
         loop
     killThread reader
     close sock
+  where
+    sendResponse' sock resp = do
+        sendResponse sock resp
+        return ()
 
 handleCommand :: Command -> Session -> IO Session
-handleCommand (SendKeys keys) s = keyHandler s keys s
+handleCommand (SendKeys evs) s = keyHandler s evs s
 handleCommand (EditFile fname) s = do
     r <- liftM R.pack $ readFile fname
     let e = Editor { filePath = Just fname, rope = r, position = R.newPosition }

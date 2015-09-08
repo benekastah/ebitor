@@ -1,13 +1,17 @@
-{-# LANGUAGE DeriveGeneric #-}
 module Ebitor.Command
-    ( Command(..)
-    , Response(..)
-    , decodeCommand
-    , decodeResponse
-    , encodeResponse
+    ( Action
+    , ActionMap
+    , CmdSyntaxNode(..)
+    , Commands(..)
+    , newCommands
+    , parseCommand
+    , parseCommand'
+    , resolveCommand
+    , runCommand
     ) where
 
 import Control.Applicative (pure)
+import Control.Exception
 import Control.Monad (mzero)
 import Data.Aeson
 import Data.List
@@ -35,13 +39,13 @@ data CommandMatcher = Empty
                     | Node (M.Map Char CommandMatcher) CommandName
                     deriving (Show)
 
-type ActionMap = M.Map CommandName ([Command] -> IO ())
+type Action a = [CmdSyntaxNode] -> IO (Either T.Text a)
+type ActionMap a = M.Map CommandName (Action a)
 
-data Commands = Commands
-                { actionMap :: ActionMap
-                , matcher :: CommandMatcher
-                }
-                deriving (Show)
+data Commands a = Commands
+                  { actionMap :: ActionMap a
+                  , matcher :: CommandMatcher
+                  }
 
 addCommand :: CommandMatcher -> CommandName -> CommandMatcher
 addCommand matcher command =
@@ -73,7 +77,7 @@ matchCommands matcher command =
 getCommandMatcher :: [CommandName] -> CommandMatcher
 getCommandMatcher = foldl' addCommand Empty
 
-resolveCommand :: Commands -> Command -> Either T.Text Command
+resolveCommand :: Commands a -> CmdSyntaxNode -> Either T.Text CmdSyntaxNode
 resolveCommand cmds cmd@(CmdCall partialCommand args) =
     case matchCommands (matcher cmds) partialCommand of
         (True, _) -> Right cmd
@@ -82,31 +86,14 @@ resolveCommand cmds cmd@(CmdCall partialCommand args) =
         (False, matches) -> Left $ T.unwords ("Multiple matches found:":matches)
 resolveCommand cmds _ = Left "Can only resolve CmdCall nodes"
 
-runCommand :: Commands -> Command -> Either T.Text (IO ())
+runCommand :: Commands a -> CmdSyntaxNode -> IO (Either T.Text a)
 runCommand cmds cmd = case resolveCommand cmds cmd of
-    Right (CmdCall command args) -> Right $ run command args
-    Right _ -> Left $ "Can only run CmdCall nodes"
-    Left m -> Left m
+    Right (CmdCall command args) -> run command args
+    Right _ -> return $ Left $ "Can only run CmdCall nodes"
+    Left m -> return $ Left m
   where
-    run :: T.Text -> [Command] -> IO ()
-    run = actionMap cmds !
+    run = (actionMap cmds !)
 
-newCommands :: ActionMap -> Commands
+newCommands :: ActionMap a -> Commands a
 newCommands cmds = Commands { actionMap = cmds
                             , matcher = getCommandMatcher $ M.keys cmds }
-
-
-data Response = Screen Editor
-              | InvalidCommand
-              deriving (Generic, Show)
-instance FromJSON Response
-instance ToJSON Response
-
-
-decodeCommand :: B.ByteString -> Maybe Command
-decodeCommand = decode
-
-encodeResponse :: Response -> B.ByteString
-encodeResponse = encode
-decodeResponse :: B.ByteString -> Maybe Response
-decodeResponse = decode

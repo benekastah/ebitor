@@ -1,5 +1,6 @@
 module Ebitor.Rope.Generic where
 
+import Control.Applicative (pure)
 import Data.Eq ()
 import Data.List (foldl')
 import Data.Maybe (isJust, fromJust, fromMaybe)
@@ -12,7 +13,7 @@ import qualified Data.Foldable as F
 import qualified Data.List as L
 import qualified Prelude as P
 
-import Data.Aeson (FromJSON, ToJSON)
+import Data.Aeson
 import qualified Data.Text as T
 
 import Ebitor.Rope.Cursor
@@ -32,11 +33,11 @@ instance RopePart a => Show (GenericRope a) where
 instance RopePart a => IsString (GenericRope a) where
     fromString = pack
 
-instance RopePart a => FromJSON (RG.GenericRope a) where
-    parseJSON = withText "String" $ pure . RG.pack . T.unpack
+instance RopePart a => FromJSON (GenericRope a) where
+    parseJSON = withText "String" $ pure . pack . T.unpack
 
-instance RopePart a => ToJSON (RG.GenericRope a) where
-    toJSON r = toJSON $ RG.unpack r
+instance RopePart a => ToJSON (GenericRope a) where
+    toJSON r = toJSON $ unpack r
 
 
 data IndexError = IndexLessThanZero | IndexOutOfBounds

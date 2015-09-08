@@ -10,8 +10,8 @@ import Data.Maybe
 
 import Text.Parsec
 import Text.Parsec.Char
-import Text.Parsec.ByteString.Lazy
-import qualified Data.ByteString.Lazy as B
+import Text.Parsec.Text
+import qualified Data.Text as T
 
 import Ebitor.Events
 
@@ -204,5 +204,5 @@ unmodifiedKeyCombo = do
 keyCombo :: Parser Event
 keyCombo = tryChoice [bracketed modifiedKeyCombo, unmodifiedKeyCombo]
 
-parseKeyEvents :: B.ByteString -> Either ParseError [Event]
-parseKeyEvents = parse (many1 keyCombo) "Key combos"
+parseKeyEvents :: T.Text -> Either ParseError [Event]
+parseKeyEvents = parse (many1 keyCombo) "Key events"

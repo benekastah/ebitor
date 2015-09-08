@@ -9,15 +9,16 @@ import Network.Socket.ByteString.Lazy (recv, send)
 import System.IO
 import System.Posix.Signals as Sig
 
+import Data.Aeson (encode)
 import Graphics.Vty
+import qualified Data.ByteString.Lazy.Char8 as B
 import qualified Graphics.Vty.Picture as V
 
 import Ebitor.Edit
+import Ebitor.Events.JSON (eventToString)
 import Ebitor.Rope (Rope)
 import Ebitor.Server
 import qualified Ebitor.Rope as R
-
-import Ebitor.Command
 
 renderEditor :: Vty -> Editor -> IO ()
 renderEditor vty editor = do
@@ -38,7 +39,9 @@ eventLoop vty sock loop = do
     e <- nextEvent vty
     case e of
         EvKey (KChar 'q') [MCtrl] -> return ()
-        _ -> do { send sock $ encodeCommand $ SendKeys [e] ; loop }
+        _ -> do
+            send sock $ encodeCommand $ SendKeys [e]
+            loop
 
 getVty :: IO Vty
 getVty = do

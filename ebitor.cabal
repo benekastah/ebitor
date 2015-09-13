@@ -68,6 +68,7 @@ executable eb
                        , filepath
                        , network == 2.6.2.*
                        , random
+                       , stm == 2.4.*
                        , text >= 1.2 && < 1.3
                        , unix == 2.7.0.*
                        , vty == 5.4.*

@@ -1,7 +1,9 @@
 {-# LANGUAGE DeriveGeneric #-}
 module Ebitor.Server
     ( Command(..)
+    , Message
     , Response(..)
+    , Window(..)
     , decodeCommand
     , decodeResponse
     , encodeCommand
@@ -29,25 +31,30 @@ import Data.Aeson
 import qualified Data.ByteString.Lazy as B
 import qualified Data.Text as T
 
+import Ebitor.Command hiding (commander)
 import Ebitor.Edit
-import Ebitor.Events.JSON
+import Ebitor.Events
 import Ebitor.Language
 import qualified Ebitor.Rope as R
+import qualified Ebitor.Command as C
+
 
 type Msg = (Int, B.ByteString)
 
-data Command = SendKeys [Event]
-             | EditFile FilePath
-             deriving (Generic, Show)
-instance FromJSON Command
-instance ToJSON Command
-encodeCommand :: Command -> B.ByteString
-encodeCommand = encode
-decodeCommand :: B.ByteString -> Maybe Command
-decodeCommand = decode
 
+data Window = Window { contents :: R.Rope, cursor :: Maybe R.Cursor }
+            deriving (Generic, Show)
+instance FromJSON Window
+instance ToJSON Window
 
-data Response = Screen Editor
+type Message = T.Text
+
+data Response = Screen
+                { editWindow :: Window
+                , commandBar :: Window
+                , message :: Maybe Message
+                }
+              | Disconnected
               | InvalidCommand
               deriving (Generic, Show)
 instance FromJSON Response
@@ -57,13 +64,32 @@ encodeResponse = encode
 decodeResponse :: B.ByteString -> Maybe Response
 decodeResponse = decode
 
+data Focus = FocusEditor | FocusCommandEditor deriving (Show, Eq)
+
 type KeyHandler = [Event] -> Session -> IO Session
 data Session = Session
                { editor :: Editor
-               , keyHandler :: KeyHandler }
+               , commandEditor :: Editor
+               , focus :: Focus
+               , commander :: Commander
+               , keyHandler :: KeyHandler
+               , clientSocket :: Socket
+               }
+
+newSession :: Socket -> Session
+newSession sock = Session { editor = newEditor
+                          , commandEditor = newEditor
+                          , focus = FocusEditor
+                          , commander = C.commander
+                          , keyHandler = normalMode
+                          , clientSocket = sock
+                          }
 
 updateEditor :: (Editor -> Editor) -> Session -> Session
 updateEditor f s = s { editor = f (editor s) }
+
+updateCommandEditor :: (Editor -> Editor) -> Session -> Session
+updateCommandEditor f s = s { commandEditor = f (commandEditor s) }
 
 defaultSockAddr = SockAddrInet 6879 iNADDR_ANY
 
@@ -102,17 +128,28 @@ mainLoop sock chan nr = do
     forkIO (runConn conn chan nr)
     mainLoop sock chan $! nr + 1
 
-newSession :: Session
-newSession = Session { editor = newEditor
-                     , keyHandler = normalMode }
-
 sendResponse :: Socket -> Response -> IO Int64
 sendResponse sock = send sock . encodeResponse
+
+windowFromEditor :: Editor -> Bool -> Window
+windowFromEditor e inFocus = Window { contents = (rope e)
+                                    , cursor = c
+                                    }
+  where
+    c = if inFocus then Just (snd $ position e) else Nothing
+
+getScreen :: Session -> Maybe Message -> Response
+getScreen sess msg =
+    Screen
+    { editWindow = windowFromEditor (editor sess) (focus sess == FocusEditor)
+    , commandBar = windowFromEditor (commandEditor sess) (focus sess == FocusCommandEditor)
+    , message = msg
+    }
 
 runConn :: (Socket, SockAddr) -> Chan Msg -> Int -> IO ()
 runConn (sock, _) chan nr = do
     let broadcast msg = writeChan chan (nr, msg)
-    sessionRef <- newIORef newSession
+    sessionRef <- newIORef $ newSession sock
     chan' <- dupChan chan
     reader <- forkIO $ fix $ \loop -> do
         (nr', str) <- readChan chan'
@@ -126,7 +163,8 @@ runConn (sock, _) chan nr = do
             Just cmd -> do
                 sess <- readIORef sessionRef >>= handleCommand cmd
                 writeIORef sessionRef sess
-                sendResponse' sock $ Screen $ editor sess
+                let screen = getScreen sess Nothing
+                sendResponse' sock screen
             Nothing -> sendResponse' sock InvalidCommand
         loop
     killThread reader
@@ -137,6 +175,13 @@ runConn (sock, _) chan nr = do
         return ()
 
 handleCommand :: Command -> Session -> IO Session
+handleCommand Disconnect s = do
+    let sock = clientSocket s
+    sendResponse sock Disconnected
+    close sock
+    return s
+handleCommand (Echo msg) s =
+    sendResponse (clientSocket s) (getScreen s $ Just msg) >> return s
 handleCommand (SendKeys evs) s = keyHandler s evs s
 handleCommand (EditFile fname) s = do
     r <- liftM R.pack $ readFile fname
@@ -148,12 +193,43 @@ normalMode [EvKey (KChar 'h') []] = return . updateEditor cursorLeft
 normalMode [EvKey (KChar 'j') []] = return . updateEditor cursorDown
 normalMode [EvKey (KChar 'k') []] = return . updateEditor cursorUp
 normalMode [EvKey (KChar 'l') []] = return . updateEditor cursorRight
-normalMode [EvKey (KChar 'i') []] = \s -> return $ s { keyHandler = insertMode }
+normalMode [EvKey (KChar 'i') []] = \s -> return $ toInsertMode s
+normalMode [EvKey (KChar ':') []] = \s -> return $ toCommandMode s
 normalMode _ = return
 
+baseInsertMode :: ((Editor -> Editor) -> Session -> Session) -> KeyHandler
+baseInsertMode _ [EvKey KEsc []] = \s -> return $ toNormalMode s
+baseInsertMode update [EvKey (KChar c) []] = return . update (insertChar c)
+baseInsertMode update [EvKey KEnter []] = return . update insertNewline
+baseInsertMode update [EvKey KBS []] = return . update backspace
+baseInsertMode _ _ = return
+
 insertMode :: KeyHandler
-insertMode [EvKey KEsc []] = \s -> return $ s { keyHandler = normalMode }
-insertMode [EvKey (KChar c) []] = return . updateEditor (insertChar c)
-insertMode [EvKey KEnter []] = return . updateEditor insertNewline
-insertMode [EvKey KBS []] = return . updateEditor backspace
-insertMode _ = return
+insertMode = baseInsertMode updateEditor
+
+commandMode :: KeyHandler
+commandMode [EvKey KEnter []] s =
+    case cmd of
+        Right cmd' -> do
+            handleCommand cmd' (toNormalMode s)
+        -- TODO proper error handling
+        Left e -> error $ T.unpack e
+  where
+    parseCmd :: R.Rope -> Either T.Text CmdSyntaxNode
+    parseCmd r = case parseCommand $ T.pack $ R.unpack r of
+        Right result -> Right result
+        Left e -> Left $ T.pack $ show e
+
+    cmd :: Either T.Text Command
+    cmd = parseCmd (rope $ commandEditor s) >>= getServerCommand (commander s)
+commandMode [EvKey KEsc []] s = return $ (toNormalMode s) { commandEditor = newEditor }
+commandMode keys s = baseInsertMode updateCommandEditor keys s
+
+toInsertMode :: Session -> Session
+toInsertMode s = s { keyHandler = insertMode, focus = FocusCommandEditor }
+
+toCommandMode :: Session -> Session
+toCommandMode s = s { keyHandler = commandMode, focus = FocusCommandEditor }
+
+toNormalMode :: Session -> Session
+toNormalMode s = s { keyHandler = normalMode, focus = FocusEditor }

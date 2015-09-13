@@ -1,35 +1,45 @@
+{-# LANGUAGE DeriveGeneric #-}
 module Ebitor.Command
     ( Action
     , ActionMap
     , CmdSyntaxNode(..)
-    , Commands(..)
-    , newCommands
+    , Command(..)
+    , Commander()
+    , commander
+    , decodeCommand
+    , encodeCommand
+    , findCommand
+    , getServerCommand
     , parseCommand
     , parseCommand'
-    , resolveCommand
-    , runCommand
     ) where
 
-import Control.Applicative (pure)
-import Control.Exception
-import Control.Monad (mzero)
-import Data.Aeson
-import Data.List
+import Data.List (foldl')
 import Data.Map ((!))
 import GHC.Generics
-import qualified Data.Aeson as J
-import qualified Data.ByteString.Lazy as B
 import qualified Data.Map as M
 import qualified Data.Text as T
 
+import Data.Aeson
+import qualified Data.ByteString.Lazy as B
+
 import Ebitor.Command.Parser
-import Ebitor.Edit
-import Ebitor.Events
 import Ebitor.Events.JSON
 import Ebitor.Language
-import Ebitor.Rope.Cursor (Cursor())
-import Ebitor.Rope.Part (RopePart)
-import qualified Ebitor.Rope.Generic as RG
+
+
+data Command = SendKeys [Event]
+             | EditFile FilePath
+             | Echo T.Text
+             | Disconnect
+             deriving (Generic, Show)
+instance FromJSON Command
+instance ToJSON Command
+encodeCommand :: Command -> B.ByteString
+encodeCommand = encode
+decodeCommand :: B.ByteString -> Maybe Command
+decodeCommand = decode
+
 
 type CommandName = T.Text
 
@@ -39,13 +49,13 @@ data CommandMatcher = Empty
                     | Node (M.Map Char CommandMatcher) CommandName
                     deriving (Show)
 
-type Action a = [CmdSyntaxNode] -> IO (Either T.Text a)
-type ActionMap a = M.Map CommandName (Action a)
+type Action = [CmdSyntaxNode] -> Either T.Text Command
+type ActionMap = M.Map CommandName Action
 
-data Commands a = Commands
-                  { actionMap :: ActionMap a
-                  , matcher :: CommandMatcher
-                  }
+data Commander = Commander
+                 { actionMap :: ActionMap
+                 , matcher :: CommandMatcher
+                 }
 
 addCommand :: CommandMatcher -> CommandName -> CommandMatcher
 addCommand matcher command =
@@ -77,23 +87,51 @@ matchCommands matcher command =
 getCommandMatcher :: [CommandName] -> CommandMatcher
 getCommandMatcher = foldl' addCommand Empty
 
-resolveCommand :: Commands a -> CmdSyntaxNode -> Either T.Text CmdSyntaxNode
-resolveCommand cmds cmd@(CmdCall partialCommand args) =
+findCommand :: Commander -> CmdSyntaxNode -> Either T.Text CmdSyntaxNode
+findCommand cmds cmd@(CmdCall partialCommand args) =
     case matchCommands (matcher cmds) partialCommand of
         (True, _) -> Right cmd
         (False, command:[]) -> Right $ CmdCall command args
         (False, []) -> Left $ T.append "No commands found matching " partialCommand
         (False, matches) -> Left $ T.unwords ("Multiple matches found:":matches)
-resolveCommand cmds _ = Left "Can only resolve CmdCall nodes"
+findCommand cmds _ = Left "Can only resolve CmdCall nodes"
 
-runCommand :: Commands a -> CmdSyntaxNode -> IO (Either T.Text a)
-runCommand cmds cmd = case resolveCommand cmds cmd of
-    Right (CmdCall command args) -> run command args
-    Right _ -> return $ Left $ "Can only run CmdCall nodes"
-    Left m -> return $ Left m
+getServerCommand :: Commander -> CmdSyntaxNode -> Either T.Text Command
+getServerCommand cmds cmd = case findCommand cmds cmd of
+    Right (CmdCall command args) -> get command args
+    Right _ -> Left $ "Not a command"
+    Left m -> Left m
   where
-    run = (actionMap cmds !)
+    get = (actionMap cmds !)
 
-newCommands :: ActionMap a -> Commands a
-newCommands cmds = Commands { actionMap = cmds
-                            , matcher = getCommandMatcher $ M.keys cmds }
+commander :: Commander
+commander = Commander { actionMap = cmds
+                      , matcher = getCommandMatcher $ M.keys cmds }
+  where
+    cmds = M.fromList
+           [ ("send-keys", sendKeys)
+           , ("e", edit)
+           , ("edit", edit)
+           , ("quit", quit)
+           , ("echo", echo)
+           ]
+
+    arityError = Left "Wrong number of arguments"
+
+    sendKeys :: Action
+    sendKeys [CmdString keys] = case parseKeyEvents keys of
+        Right evs -> Right $ SendKeys evs
+        Left e -> Left $ T.pack $ show e
+    sendKeys _ = arityError
+
+    edit :: Action
+    edit [CmdString fname] = Right $ EditFile $ T.unpack fname
+    edit _ = arityError
+
+    quit :: Action
+    quit [] = Right Disconnect
+    quit _ = arityError
+
+    echo :: Action
+    echo [CmdString msg] = Right $ Echo msg
+    echo _ = arityError

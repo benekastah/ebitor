@@ -89,10 +89,3 @@ parseCommand = parse commandParser "User command"
 
 parseCommand' :: B.ByteString -> Either ParseError CmdSyntaxNode
 parseCommand' = parseCommand . TL.toStrict . TL.decodeUtf8
-
-instance FromJSON CmdSyntaxNode where
-    parseJSON = withText "String" doParse
-      where
-        doParse s = case parseCommand s of
-            Right cmd -> pure cmd
-            Left e -> mzero

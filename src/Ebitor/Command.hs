@@ -5,6 +5,7 @@ module Ebitor.Command
     , CmdSyntaxNode(..)
     , Command(..)
     , Commander()
+    , Message(..)
     , commander
     , decodeCommand
     , encodeCommand
@@ -27,10 +28,14 @@ import Ebitor.Command.Parser
 import Ebitor.Events.JSON
 import Ebitor.Language
 
+data Message = Message T.Text | ErrorMessage T.Text
+             deriving (Generic, Show)
+instance FromJSON Message
+instance ToJSON Message
 
 data Command = SendKeys [Event]
              | EditFile FilePath
-             | Echo T.Text
+             | Echo Message
              | Disconnect
              deriving (Generic, Show)
 instance FromJSON Command
@@ -114,6 +119,7 @@ commander = Commander { actionMap = cmds
            , ("edit", edit)
            , ("quit", quit)
            , ("echo", echo)
+           , ("echoerr", echoErr)
            ]
 
     arityError = Left "Wrong number of arguments"
@@ -133,5 +139,9 @@ commander = Commander { actionMap = cmds
     quit _ = arityError
 
     echo :: Action
-    echo [CmdString msg] = Right $ Echo msg
+    echo [CmdString msg] = Right $ Echo $ Message msg
     echo _ = arityError
+
+    echoErr :: Action
+    echoErr [CmdString msg] = Right $ Echo $ ErrorMessage msg
+    echoErr _ = arityError

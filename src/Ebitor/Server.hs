@@ -1,7 +1,7 @@
 {-# LANGUAGE DeriveGeneric #-}
 module Ebitor.Server
     ( Command(..)
-    , Message
+    , Message(..)
     , Response(..)
     , Window(..)
     , decodeCommand
@@ -47,8 +47,6 @@ data Window = Window { contents :: R.Rope, cursor :: Maybe R.Cursor }
 instance FromJSON Window
 instance ToJSON Window
 
-type Message = T.Text
-
 data Response = Screen
                 { editWindow :: Window
                 , commandBar :: Window
@@ -74,6 +72,7 @@ data Session = Session
                , commander :: Commander
                , keyHandler :: KeyHandler
                , clientSocket :: Socket
+               , lastMessage :: Maybe Message
                }
 
 newSession :: Socket -> Session
@@ -83,6 +82,7 @@ newSession sock = Session { editor = newEditor
                           , commander = C.commander
                           , keyHandler = normalMode
                           , clientSocket = sock
+                          , lastMessage = Nothing
                           }
 
 updateEditor :: (Editor -> Editor) -> Session -> Session
@@ -162,8 +162,9 @@ runConn (sock, _) chan nr = do
         case cmd of
             Just cmd -> do
                 sess <- readIORef sessionRef >>= handleCommand cmd
-                writeIORef sessionRef sess
-                let screen = getScreen sess Nothing
+                let msg = lastMessage sess
+                writeIORef sessionRef $ sess { lastMessage = Nothing }
+                let screen = getScreen sess (lastMessage sess)
                 sendResponse' sock screen
             Nothing -> sendResponse' sock InvalidCommand
         loop
@@ -180,8 +181,7 @@ handleCommand Disconnect s = do
     sendResponse sock Disconnected
     close sock
     return s
-handleCommand (Echo msg) s =
-    sendResponse (clientSocket s) (getScreen s $ Just msg) >> return s
+handleCommand (Echo msg) s = return $ s { lastMessage = Just msg }
 handleCommand (SendKeys evs) s = keyHandler s evs s
 handleCommand (EditFile fname) s = do
     r <- liftM R.pack $ readFile fname
@@ -207,14 +207,17 @@ baseInsertMode _ _ = return
 insertMode :: KeyHandler
 insertMode = baseInsertMode updateEditor
 
+cancelCommandMode :: Session -> Session
+cancelCommandMode s = (toNormalMode s) { commandEditor = newEditor }
+
 commandMode :: KeyHandler
 commandMode [EvKey KEnter []] s =
     case cmd of
         Right cmd' -> do
-            handleCommand cmd' (toNormalMode s)
-        -- TODO proper error handling
-        Left e -> error $ T.unpack e
+            handleCommand cmd' s'
+        Left e -> return $ s' { lastMessage = Just $ ErrorMessage e }
   where
+    s' = cancelCommandMode s
     parseCmd :: R.Rope -> Either T.Text CmdSyntaxNode
     parseCmd r = case parseCommand $ T.pack $ R.unpack r of
         Right result -> Right result
@@ -222,7 +225,7 @@ commandMode [EvKey KEnter []] s =
 
     cmd :: Either T.Text Command
     cmd = parseCmd (rope $ commandEditor s) >>= getServerCommand (commander s)
-commandMode [EvKey KEsc []] s = return $ (toNormalMode s) { commandEditor = newEditor }
+commandMode [EvKey KEsc []] s = return $ cancelCommandMode s
 commandMode keys s = baseInsertMode updateCommandEditor keys s
 
 toInsertMode :: Session -> Session

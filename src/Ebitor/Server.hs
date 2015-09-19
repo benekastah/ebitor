@@ -35,23 +35,16 @@ import Ebitor.Command hiding (commander)
 import Ebitor.Edit
 import Ebitor.Events
 import Ebitor.Language
-import qualified Ebitor.Rope as R
+import Ebitor.Window hiding (focus)
 import qualified Ebitor.Command as C
+import qualified Ebitor.Rope as R
+import qualified Ebitor.Window as W
 
 
 type Msg = (Int, B.ByteString)
 
 
-data Window = Window { contents :: R.Rope, cursor :: Maybe R.Cursor }
-            deriving (Generic, Show)
-instance FromJSON Window
-instance ToJSON Window
-
-data Response = Screen
-                { editWindow :: Window
-                , commandBar :: Window
-                , message :: Maybe Message
-                }
+data Response = Screen Window
               | Disconnected
               | InvalidCommand
               deriving (Generic, Show)
@@ -131,20 +124,24 @@ mainLoop sock chan nr = do
 sendResponse :: Socket -> Response -> IO Int64
 sendResponse sock = send sock . encodeResponse
 
-windowFromEditor :: Editor -> Bool -> Window
-windowFromEditor e inFocus = Window { contents = (rope e)
-                                    , cursor = c
-                                    }
-  where
-    c = if inFocus then Just (snd $ position e) else Nothing
+windowFromEditor :: Editor -> Int -> Window
+windowFromEditor e size = window (rope e) (snd $ position e) size
 
 getScreen :: Session -> Maybe Message -> Response
-getScreen sess msg =
-    Screen
-    { editWindow = windowFromEditor (editor sess) (focus sess == FocusEditor)
-    , commandBar = windowFromEditor (commandEditor sess) (focus sess == FocusCommandEditor)
-    , message = msg
-    }
+getScreen sess msg = Screen win'
+  where
+    editWindow = windowFromEditor (editor sess) 0
+    commandBar = windowFromEditor (commandEditor sess) 1
+    statusBar =
+        let windowFromText t = window (R.pack $ T.unpack t) R.newCursor 1
+        in  case msg of
+            Just (Message m) -> windowFromText m
+            Just (ErrorMessage m) -> windowFromText m
+            Nothing -> commandBar
+    win = editWindow <-> statusBar
+    win' = case focus sess of
+        FocusEditor -> W.focus editWindow win
+        FocusCommandEditor -> W.focus commandBar win
 
 runConn :: (Socket, SockAddr) -> Chan Msg -> Int -> IO ()
 runConn (sock, _) chan nr = do

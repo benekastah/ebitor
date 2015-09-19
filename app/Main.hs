@@ -22,7 +22,9 @@ import Ebitor.Edit
 import Ebitor.Events.JSON (eventToString)
 import Ebitor.Rope (Rope)
 import Ebitor.Server
+import Ebitor.Window hiding (resize)
 import qualified Ebitor.Rope as R
+import qualified Ebitor.Window as W
 
 
 data App = App
@@ -35,33 +37,30 @@ data App = App
 sendCommand :: Socket -> Command -> IO Int64
 sendCommand s = send s . encodeCommand
 
-imageForWindow :: Window -> Vty -> Int -> IO Image
-imageForWindow win vty height = do
-    let ropeLines = R.lines $ contents win
-        img = vertCat $ map (resizeHeight 1 . string defAttr . R.unpack) ropeLines
-    case cursor win of
-        Just (R.Cursor (ln, col)) -> setCursorPos (outputIface vty) (col - 1) (ln - 1)
-        Nothing -> return ()
-    return $ resizeHeight height img
-
-imageForMessage :: Message -> Image
-imageForMessage (Message m) = text' defAttr m
-imageForMessage (ErrorMessage m) = text' attr m
+imageForWindow :: Vty -> Window -> IO Image
+imageForWindow vty (LayoutWindow o wins) = do
+    imgs <- sequence $ map imageForWindow' wins
+    return $ cat imgs
   where
-    attr = defAttr `withForeColor` white `withBackColor` red
+    cat = if o == Horizontal then vertCat else horizCat
+    resizeDimension = if o == Horizontal then resizeHeight else resizeWidth
+    imageForWindow' w@(ContentWindow _ _ s _) =
+        liftM (resizeDimension s) (imageForWindow vty w)
+    imageForWindow' w = imageForWindow vty w
+imageForWindow vty (ContentWindow r (R.Cursor (ln, col)) s f) = do
+    let ropeLines = R.lines r
+        img = vertCat $ map (resizeHeight 1 . string defAttr . R.unpack) ropeLines
+    when f $ setCursorPos (outputIface vty) (col - 1) (ln - 1)
+    return img
 
 handleResponse :: Response -> App -> IO ()
-handleResponse (Screen { editWindow = e, commandBar = c, message = m }) app = do
-    (width, height) <- displayBounds $ outputIface vty
-    imgE <- imageForWindow e vty (height - 1)
-    imgC <- case m of
-        Just m' -> if inFocus c then getImgC else return $ imageForMessage m'
-        Nothing -> getImgC
-    update vty $ picForImage (imgE <-> imgC)
+handleResponse (Screen w) app = do
+    bounds <- displayBounds $ outputIface vty
+    let w' = W.resize w bounds
+    img <- imageForWindow vty w'
+    update vty $ picForImage img
   where
     vty = term app
-    getImgC = imageForWindow c vty 1
-    inFocus w = isJust $ cursor w
 handleResponse Disconnected app = quit app
 handleResponse InvalidCommand app = do
     sendCommand (serverSocket app) $ Echo $ ErrorMessage "Invalid command"

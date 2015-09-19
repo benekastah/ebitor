@@ -28,6 +28,7 @@ library
                        , Ebitor.Rope.Regex
                        , Ebitor.Server
                        , Ebitor.Utils
+                       , Ebitor.Window
     build-depends:       base >= 4.7 && < 5
                        , aeson == 0.9.0.*
                        , array

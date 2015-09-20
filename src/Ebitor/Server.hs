@@ -189,6 +189,7 @@ runConn (sock, _) chan nr = do
         return ()
 
 handleCommand :: Command -> Session -> IO Session
+handleCommand (CommandSequence cmds) s = foldl (>>=) (return s) $ map handleCommand cmds
 handleCommand Disconnect s = do
     let sock = clientSocket s
     sendResponse sock Disconnected
@@ -200,6 +201,14 @@ handleCommand (EditFile fname) s = do
     r <- liftM R.pack $ readFile fname
     let e = Editor { filePath = Just fname, rope = r, position = R.newPosition }
     return $ s { editor = e }
+handleCommand (WriteFile Nothing) s = do
+    case filePath $ editor s of
+        Just fname -> handleCommand (WriteFile $ Just fname) s
+        Nothing -> return $ s { lastMessage = Just $ ErrorMessage "No file name" }
+handleCommand (WriteFile (Just fname)) s = do
+    let e = editor s
+    writeFile fname (R.unpack $ rope e)
+    return $ s { editor = e { filePath = Just fname } }
 
 normalMode :: KeyHandler
 normalMode [EvKey (KChar 'h') []] = return . updateEditor cursorLeft

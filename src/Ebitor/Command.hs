@@ -15,6 +15,7 @@ module Ebitor.Command
     , parseCommand'
     ) where
 
+import Data.Either
 import Data.List (foldl')
 import Data.Map ((!))
 import GHC.Generics
@@ -35,8 +36,10 @@ instance ToJSON Message
 
 data Command = SendKeys [Event]
              | EditFile FilePath
+             | WriteFile (Maybe FilePath)
              | Echo Message
              | Disconnect
+             | CommandSequence [Command]
              deriving (Generic, Show)
 instance FromJSON Command
 instance ToJSON Command
@@ -114,12 +117,14 @@ commander = Commander { actionMap = cmds
                       , matcher = getCommandMatcher $ M.keys cmds }
   where
     cmds = M.fromList
-           [ ("send-keys", sendKeys)
-           , ("e", edit)
-           , ("edit", edit)
-           , ("quit", quit)
+           [ ("e", edit)
            , ("echo", echo)
            , ("echoerr", echoErr)
+           , ("edit", edit)
+           , ("quit", quit)
+           , ("send-keys", sendKeys)
+           , ("wq", writeQuit)
+           , ("write", write)
            ]
 
     arityError = Left "Wrong number of arguments"
@@ -133,6 +138,16 @@ commander = Commander { actionMap = cmds
     edit :: Action
     edit [CmdString fname] = Right $ EditFile $ T.unpack fname
     edit _ = arityError
+
+    write :: Action
+    write [CmdString fname] = Right $ WriteFile $ Just $ T.unpack fname
+    write [] = Right $ WriteFile Nothing
+    write _ = arityError
+
+    writeQuit :: Action
+    writeQuit arg = case partitionEithers [write arg, quit []] of
+        ([], cmds) -> Right $ CommandSequence cmds
+        ((err:_), _) -> Left err
 
     quit :: Action
     quit [] = Right Disconnect

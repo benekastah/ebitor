@@ -36,8 +36,8 @@ library
                        , containers
                        , directory
                        , filepath
+                       , hslogger == 1.2.*
                        , hslua >= 0.4.0 && < 0.4.1
-                       , lens == 4.*
                        , network == 2.6.2.*
                        , parsec >= 3.1 && < 3.2
                        , regex-base == 0.93.*
@@ -67,6 +67,7 @@ executable eb
                        , bytestring
                        , ebitor
                        , filepath
+                       , hslogger == 1.2.*
                        , network == 2.6.2.*
                        , random
                        , stm == 2.4.*

@@ -6,7 +6,9 @@ module Ebitor.Window
     , (<|>)
     , focus
     , hasFocus
+    , height
     , resize
+    , width
     , window
     ) where
 
@@ -21,6 +23,7 @@ data Orientation = Horizontal | Vertical
 instance FromJSON Orientation
 instance ToJSON Orientation
 
+-- TODO change Int to Maybe Int here
 data Window = ContentWindow R.Rope R.Cursor Int Bool
             | LayoutWindow Orientation [Window]
             deriving (Generic, Show, Eq)
@@ -56,13 +59,16 @@ infixr 7 <|>
 l <|> (LayoutWindow Vertical r) = LayoutWindow Vertical (l:r)
 l <|> r = LayoutWindow Vertical [l, r]
 
-minHeight (LayoutWindow Horizontal wins) = foldr ((+) . minHeight) 0 wins
-minHeight (LayoutWindow Vertical _) = 0
-minHeight (ContentWindow _ _ h _) = max h 0
+height defaultH (LayoutWindow Horizontal wins) = foldr ((+) . height defaultH) 0 wins
+height defaultH (LayoutWindow Vertical _) = defaultH
+height _ (ContentWindow _ _ h _) = max h 0
 
-minWidth (LayoutWindow Vertical wins) = foldr ((+) . minWidth) 0 wins
-minWidth (LayoutWindow Horizontal _) = 0
-minWidth (ContentWindow _ _ w _) = max w 0
+width defaultW (LayoutWindow Vertical wins) = foldr ((+) . width defaultW) 0 wins
+width defaultW (LayoutWindow Horizontal _) = defaultW
+width _ (ContentWindow _ _ w _) = max w 0
+
+minHeight = height 0
+minWidth = width 0
 
 resize :: Window -> (Int, Int) -> Window
 resize (LayoutWindow o wins) (width, height) = LayoutWindow o $ sizedWins dimension wins'

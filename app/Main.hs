@@ -13,6 +13,9 @@ import Network.Socket.ByteString.Lazy (recv, send)
 import System.IO
 import System.Posix.Signals as Sig
 
+import System.Log.Handler.Simple
+import System.Log.Logger
+
 import Data.Aeson (encode)
 import Graphics.Vty
 import qualified Data.ByteString.Lazy.Char8 as B
@@ -22,7 +25,7 @@ import Ebitor.Edit
 import Ebitor.Events.JSON (eventToString)
 import Ebitor.Rope (Rope)
 import Ebitor.Server
-import Ebitor.Window hiding (resize)
+import Ebitor.Window (Window(..), Orientation(..))
 import qualified Ebitor.Rope as R
 import qualified Ebitor.Window as W
 
@@ -34,31 +37,63 @@ data App = App
            }
 
 
+loggerName = "Ebitor.Vty"
+
+setUpLogger :: IO ()
+setUpLogger = do
+    updateGlobalLogger rootLoggerName removeHandler
+    f <- fileHandler "logs/vty.log" DEBUG
+    updateGlobalLogger loggerName (setHandlers [f] . setLevel DEBUG)
+
+
 sendCommand :: Socket -> Command -> IO Int64
 sendCommand s = send s . encodeCommand
 
-imageForWindow :: Vty -> Window -> IO Image
-imageForWindow vty (LayoutWindow o wins) = do
-    imgs <- sequence $ map imageForWindow' wins
-    return $ cat imgs
+setCursor :: Vty -> Window -> IO ()
+setCursor vty w = do
+    let out = outputIface vty
+    (fullWidth, fullHeight) <- displayBounds out
+    case getCursor Horizontal (-1, -1, fullWidth, fullHeight) w of
+        Just (ln, col) -> do
+            setCursorPos out col ln
+            showCursor out
+        Nothing -> hideCursor out
   where
-    cat = if o == Horizontal then vertCat else horizCat
-    resizeDimension = if o == Horizontal then resizeHeight else resizeWidth
-    imageForWindow' w@(ContentWindow _ _ s _) =
-        liftM (resizeDimension s) (imageForWindow vty w)
-    imageForWindow' w = imageForWindow vty w
-imageForWindow vty (ContentWindow r (R.Cursor (ln, col)) s f) = do
-    let ropeLines = R.lines r
-        img = vertCat $ map (resizeHeight 1 . string defAttr . R.unpack) ropeLines
-    when f $ setCursorPos (outputIface vty) (col - 1) (ln - 1)
-    return img
+    getCursor :: Orientation -> (Int, Int, Int, Int) -> Window -> Maybe (Int, Int)
+    getCursor _ offset (LayoutWindow o wins) =
+        let advanceOffset (offsetLn, offsetCol, width, height) w = if o == Horizontal then
+                (offsetLn + W.height height w, offsetCol, width, height)
+            else
+                (offsetLn, offsetCol + W.width width w, width, height)
+            getCursor' _ [] = Nothing
+            getCursor' offset (w:wins) = case getCursor o offset w of
+                Nothing -> getCursor' (advanceOffset offset w) wins
+                curs -> curs
+        in  getCursor' offset wins
+    getCursor _ (offsetLn, offsetCol, _, _) (ContentWindow _ (R.Cursor (ln, col)) _ f) =
+        let vtyLn = offsetLn + ln
+            vtyCol = offsetCol + col
+        in  if f then Just (vtyLn, vtyCol) else Nothing
+
+imageForWindow :: Window -> Image
+imageForWindow w = imageForWindow' Horizontal w
+  where
+    imageForWindow' :: Orientation -> Window -> Image
+    imageForWindow' _ (LayoutWindow o wins) =
+        let cat = if o == Horizontal then vertCat else horizCat
+        in  cat $ map (imageForWindow' o) wins
+    imageForWindow' o (ContentWindow r curs@(R.Cursor (ln, col)) s f) =
+        let ropeLines = R.lines r
+            img = vertCat $ map (resizeHeight 1 . string defAttr . R.unpack) ropeLines
+            resizeDimension = if o == Horizontal then resizeHeight else resizeWidth
+        in  resizeDimension s img
 
 handleResponse :: Response -> App -> IO ()
 handleResponse (Screen w) app = do
     bounds <- displayBounds $ outputIface vty
     let w' = W.resize w bounds
-    img <- imageForWindow vty w'
-    update vty $ picForImage img
+    update vty $ picForImage $ imageForWindow w'
+    setCursor vty w'
   where
     vty = term app
 handleResponse Disconnected app = quit app
@@ -78,7 +113,6 @@ getVty = do
     cfg <- standardIOConfig
     vty <- mkVty cfg
     setCursorPos (outputIface vty) 0 0
-    showCursor (outputIface vty)
     return vty
 
 getSocket :: IO Socket
@@ -86,6 +120,7 @@ getSocket = do
     sock <- socket AF_INET Stream 0
     setSocketOption sock ReuseAddr 1
     connect sock defaultSockAddr
+    infoM loggerName "Connected to server"
     return sock
 
 whileRunning :: MVar () -> IO () -> IO ()
@@ -94,6 +129,7 @@ whileRunning mvar f = fix $ \loop -> do
     when n (f >> loop)
 
 main = do
+    setUpLogger
     programStatus <- newEmptyMVar
     vty <- getVty
 
@@ -113,7 +149,6 @@ main = do
     forkIO $ whileRunning programStatus $ do
         resp <- liftM decodeResponse $ recv sock 4096
         when (isJust resp) $ handleResponse (fromJust resp) app
-        showCursor (outputIface vty)
         return ()
 
     -- Thread to process user events

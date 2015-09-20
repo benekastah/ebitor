@@ -27,6 +27,9 @@ import Network.Socket.ByteString.Lazy (recv, send)
 import System.IO
 import qualified Data.Map as M
 
+import System.Log.Handler.Simple
+import System.Log.Logger
+
 import Data.Aeson
 import qualified Data.ByteString.Lazy as B
 import qualified Data.Text as T
@@ -103,17 +106,26 @@ getSocket addr = do
     listen sock 2
     return sock
 
-runServer :: SockAddr -> IO ()
-runServer addr = do
+loggerName = "Ebitor.Server"
+
+setUpLogger :: IO ()
+setUpLogger = do
+    updateGlobalLogger rootLoggerName removeHandler
+    f <- fileHandler "logs/server.log" DEBUG
+    updateGlobalLogger loggerName (setHandlers [f] . setLevel DEBUG)
+
+runServer' :: (IO () -> IO a) -> SockAddr -> IO a
+runServer' f addr = do
+    setUpLogger
     sock <- getSocket addr
     chan <- getChan
-    mainLoop sock chan 0
+    f $ mainLoop sock chan 0
+
+runServer :: SockAddr -> IO ()
+runServer = runServer' id
 
 runServerThread :: SockAddr -> IO ThreadId
-runServerThread addr = do
-    sock <- getSocket addr
-    chan <- getChan
-    forkIO $ mainLoop sock chan 0
+runServerThread = runServer' forkIO
 
 mainLoop :: Socket -> Chan Msg -> Int -> IO ()
 mainLoop sock chan nr = do
@@ -122,7 +134,9 @@ mainLoop sock chan nr = do
     mainLoop sock chan $! nr + 1
 
 sendResponse :: Socket -> Response -> IO Int64
-sendResponse sock = send sock . encodeResponse
+sendResponse sock resp = do
+    infoM loggerName ("Response: " ++ show resp)
+    send sock $ encodeResponse resp
 
 windowFromEditor :: Editor -> Int -> Window
 windowFromEditor e size = window (rope e) (snd $ position e) size
@@ -145,6 +159,7 @@ getScreen sess msg = Screen win'
 
 runConn :: (Socket, SockAddr) -> Chan Msg -> Int -> IO ()
 runConn (sock, _) chan nr = do
+    infoM loggerName ("Client connected: " ++ show nr)
     let broadcast msg = writeChan chan (nr, msg)
     sessionRef <- newIORef $ newSession sock
     chan' <- dupChan chan
@@ -158,6 +173,7 @@ runConn (sock, _) chan nr = do
         cmd <- liftM decodeCommand $ recv sock 4096
         case cmd of
             Just cmd -> do
+                infoM loggerName ("Command: " ++ show cmd)
                 sess <- readIORef sessionRef >>= handleCommand cmd
                 let msg = lastMessage sess
                 writeIORef sessionRef $ sess { lastMessage = Nothing }
@@ -226,10 +242,10 @@ commandMode [EvKey KEsc []] s = return $ cancelCommandMode s
 commandMode keys s = baseInsertMode updateCommandEditor keys s
 
 toInsertMode :: Session -> Session
-toInsertMode s = s { keyHandler = insertMode, focus = FocusCommandEditor }
-
-toCommandMode :: Session -> Session
-toCommandMode s = s { keyHandler = commandMode, focus = FocusCommandEditor }
+toInsertMode s = s { keyHandler = insertMode, focus = FocusEditor }
 
 toNormalMode :: Session -> Session
 toNormalMode s = s { keyHandler = normalMode, focus = FocusEditor }
+
+toCommandMode :: Session -> Session
+toCommandMode s = s { keyHandler = commandMode, focus = FocusCommandEditor }

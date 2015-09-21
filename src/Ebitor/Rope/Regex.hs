@@ -8,6 +8,9 @@ module Ebitor.Rope.Regex
     , compile
     , execute
     , regexec
+    , replace
+    , replaceCount
+    , replaceOne
     ) where
 
 import Data.Array((!),elems)
@@ -84,3 +87,37 @@ regexec r rope =
             let main = fst (mt!0)
                 rest = map fst (tail (elems mt)) -- will be []
             in  Right (Just (pre,main,post,rest))
+
+replaceCount :: RopePart a
+             => Int
+             -> Regex
+             -> (GenericRope a)
+             -> (GenericRope a)
+             -> (GenericRope a)
+replaceCount n r replacement haystack = replaceCount' n ("", haystack)
+  where
+    replaceCount' 0 (h1, h2) = R.append h1 h2
+    replaceCount' n (h1, h2) =
+        case matchOnce r h2 of
+            Just match ->
+                let (offset, len) = match ! 0
+                    (prefix, result) = R.splitAt offset h2
+                    h1' = R.concat [h1, prefix, replacement]
+                    result' = R.drop len result
+                in  replaceCount' (n - 1) (h1', result')
+            Nothing -> haystack
+
+
+replaceOne :: RopePart a
+           => Regex
+           -> (GenericRope a)
+           -> (GenericRope a)
+           -> (GenericRope a)
+replaceOne = replaceCount 1
+
+replace :: RopePart a
+        => Regex
+        -> (GenericRope a)
+        -> (GenericRope a)
+        -> (GenericRope a)
+replace = replaceCount (-1)

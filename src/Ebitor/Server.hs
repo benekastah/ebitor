@@ -4,13 +4,13 @@ module Ebitor.Server
     , Message(..)
     , Response(..)
     , Window(..)
-    , decodeCommand
-    , decodeResponse
-    , encodeCommand
-    , encodeResponse
+    , defaultSockAddr
+    , receiveCommand
+    , receiveResponse
     , runServer
     , runServerThread
-    , defaultSockAddr
+    , sendCommand
+    , sendResponse
     ) where
 
 import Control.Concurrent
@@ -24,23 +24,30 @@ import GHC.Generics
 import GHC.Int (Int64)
 import Network.Socket hiding (recv, send)
 import Network.Socket.ByteString.Lazy (recv, send)
+import Numeric
 import System.IO
+import System.IO.Error
 import qualified Data.Map as M
 
+import Codec.Compression.GZip (compress, decompress)
+import Data.Aeson
 import System.Log.Handler.Simple
 import System.Log.Logger
-
-import Data.Aeson
-import qualified Data.ByteString.Lazy as B
+import qualified Data.ByteString.Lazy as B hiding (pack)
 import qualified Data.Text as T
+import qualified Data.Text.Lazy as TL
+import qualified Data.Text.Lazy.Encoding as TL
+import qualified Text.Regex.TDFA as Regex
 
 import Ebitor.Command hiding (commander)
 import Ebitor.Edit
 import Ebitor.Events
 import Ebitor.Language
+import Ebitor.Utils
 import Ebitor.Window hiding (focus)
 import qualified Ebitor.Command as C
 import qualified Ebitor.Rope as R
+import qualified Ebitor.Rope.Regex as RR
 import qualified Ebitor.Window as W
 
 
@@ -69,6 +76,7 @@ data Session = Session
                , keyHandler :: KeyHandler
                , clientSocket :: Socket
                , lastMessage :: Maybe Message
+               , displaySize :: (Int, Int)
                }
 
 newSession :: Socket -> Session
@@ -79,6 +87,7 @@ newSession sock = Session { editor = newEditor
                           , keyHandler = normalMode
                           , clientSocket = sock
                           , lastMessage = Nothing
+                          , displaySize = (0, 0)
                           }
 
 updateEditor :: (Editor -> Editor) -> Session -> Session
@@ -133,17 +142,59 @@ mainLoop sock chan nr = do
     forkIO (runConn conn chan nr)
     mainLoop sock chan $! nr + 1
 
+sendData :: Socket -> B.ByteString -> IO Int64
+sendData sock dat = do
+    debugM loggerName ("len: " ++ show len)
+    send sock $ B.append len compressedData
+  where
+    compressedData = compress dat
+    len =
+        let hex = showHex (B.length compressedData) ""
+            padding = replicate (16 - length hex) '0'
+        in  TL.encodeUtf8 (TL.pack $ padding ++ hex)
+
+receiveData :: Socket -> IO B.ByteString
+receiveData sock = do
+    hexLen <- recv sock 16
+    when (B.length hexLen < 16) $ error "Response too short"
+    fmap decompress $ recv' (lenFromHex hexLen) ""
+  where
+    bestLen ((i, ""):_) = i
+    bestLen ((i, s):ls) = bestLen ls
+    lenFromHex hexLen = bestLen $ readHex $ TL.unpack $ TL.decodeUtf8 hexLen
+    recvSize = 4096
+    recv' len accum = do
+        dat <- recv sock recvSize
+        let len' = len - recvSize
+            dat' = B.append accum dat
+        if len' <= 0 then
+            return dat'
+        else
+            recv' len' dat'
+
 sendResponse :: Socket -> Response -> IO Int64
-sendResponse sock resp = do
-    infoM loggerName ("Response: " ++ show resp)
-    send sock $ encodeResponse resp
+sendResponse sock = sendData sock . encodeResponse
+
+sendCommand :: Socket -> Command -> IO Int64
+sendCommand sock = sendData sock . encodeCommand
+
+receiveResponse :: Socket -> IO (Maybe Response)
+receiveResponse = fmap decodeResponse . receiveData
+
+receiveCommand :: Socket -> IO (Maybe Command)
+receiveCommand = fmap decodeCommand . receiveData
 
 windowFromEditor :: Editor -> Int -> Window
-windowFromEditor e size = window (rope e) (snd $ position e) size
+windowFromEditor e = window r' (snd $ position e)
+  where
+    r = R.unlines $ drop (firstLine e - 1) (R.lines $ rope e)
+    reTab = fromRight $ RR.compile Regex.defaultCompOpt Regex.defaultExecOpt ("\t" :: R.Rope)
+    r' = RR.replace reTab (R.pack $ replicate 8 ' ') r
 
 getScreen :: Session -> Maybe Message -> Response
-getScreen sess msg = Screen win'
+getScreen sess msg = Screen win
   where
+    displaySize' = displaySize sess
     editWindow = windowFromEditor (editor sess) 0
     commandBar = windowFromEditor (commandEditor sess) 1
     statusBar =
@@ -152,10 +203,10 @@ getScreen sess msg = Screen win'
             Just (Message m) -> windowFromText m
             Just (ErrorMessage m) -> windowFromText m
             Nothing -> commandBar
-    win = editWindow <-> statusBar
-    win' = case focus sess of
-        FocusEditor -> W.focus editWindow win
-        FocusCommandEditor -> W.focus commandBar win
+    focusOn = case focus sess of
+        FocusEditor -> editWindow
+        FocusCommandEditor -> commandBar
+    win = W.resize (W.focus focusOn $ editWindow <-> statusBar) displaySize'
 
 runConn :: (Socket, SockAddr) -> Chan Msg -> Int -> IO ()
 runConn (sock, _) chan nr = do
@@ -166,11 +217,12 @@ runConn (sock, _) chan nr = do
     reader <- forkIO $ fix $ \loop -> do
         (nr', str) <- readChan chan'
         when (nr /= nr') $ do
-            send sock str
+            sendData sock str
             return ()
         loop
     handle (\(SomeException _) -> return ()) $ fix $ \loop -> do
-        cmd <- liftM decodeCommand $ recv sock 4096
+        infoM loggerName "Waiting for command..."
+        cmd <- receiveCommand sock
         case cmd of
             Just cmd -> do
                 infoM loggerName ("Command: " ++ show cmd)
@@ -188,6 +240,13 @@ runConn (sock, _) chan nr = do
         sendResponse sock resp
         return ()
 
+getIOErrorMessage :: IOError -> T.Text -> T.Text
+getIOErrorMessage e thing
+    | isDoesNotExistError e = T.concat [thing, " does not exist"]
+    | isPermissionError e = T.concat ["You don't have permission to use ", thing]
+    | isAlreadyInUseError e = T.concat [thing, " is busy"]
+    | otherwise = T.concat [thing, " is unavailable"]
+
 handleCommand :: Command -> Session -> IO Session
 handleCommand (CommandSequence cmds) s = foldl (>>=) (return s) $ map handleCommand cmds
 handleCommand Disconnect s = do
@@ -198,17 +257,28 @@ handleCommand Disconnect s = do
 handleCommand (Echo msg) s = return $ s { lastMessage = Just msg }
 handleCommand (SendKeys evs) s = keyHandler s evs s
 handleCommand (EditFile fname) s = do
-    r <- liftM R.pack $ readFile fname
-    let e = Editor { filePath = Just fname, rope = r, position = R.newPosition }
-    return $ s { editor = e }
+    debugM loggerName ("Trying to read file " ++ fname)
+    result <- try $ R.readFile fname
+    case result of
+        Right r -> do
+            debugM loggerName ("Read file " ++ fname)
+            let e = newEditor { filePath = Just fname, rope = r }
+            return $ s { editor = e }
+        Left e
+            | isDoesNotExistError e ->
+                return $ s { editor = (editor s) { filePath = Just fname } }
+            | otherwise -> errorMessage $ getIOErrorMessage e $ T.pack fname
+  where
+    errorMessage msg = return $ s { lastMessage = Just $ ErrorMessage msg }
 handleCommand (WriteFile Nothing) s = do
     case filePath $ editor s of
         Just fname -> handleCommand (WriteFile $ Just fname) s
         Nothing -> return $ s { lastMessage = Just $ ErrorMessage "No file name" }
 handleCommand (WriteFile (Just fname)) s = do
     let e = editor s
-    writeFile fname (R.unpack $ rope e)
+    R.writeFile fname $ rope e
     return $ s { editor = e { filePath = Just fname } }
+handleCommand (UpdateDisplaySize size) s = return s { displaySize = size }
 
 normalMode :: KeyHandler
 normalMode [EvKey (KChar 'h') []] = return . updateEditor cursorLeft
@@ -236,7 +306,8 @@ commandMode :: KeyHandler
 commandMode [EvKey KEnter []] s =
     case cmd of
         Right cmd' -> do
-            handleCommand cmd' s'
+            infoM loggerName ("Parsed command: " ++ show cmd')
+            handleCommand cmd' $ s'
         Left e -> return $ s' { lastMessage = Just $ ErrorMessage e }
   where
     s' = cancelCommandMode s

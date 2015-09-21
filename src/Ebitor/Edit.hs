@@ -25,6 +25,7 @@ data Editor = Editor
     { filePath :: Maybe FilePath
     , rope :: Rope
     , position :: Position
+    , firstLine :: Int
     }
     deriving (Generic, Show)
 
@@ -34,7 +35,9 @@ instance ToJSON Editor
 newEditor :: Editor
 newEditor = Editor { filePath = Nothing
                    , rope = R.empty
-                   , position = R.newPosition }
+                   , position = R.newPosition
+                   , firstLine = 1
+                   }
 
 unreachable = error "unreachable"
 

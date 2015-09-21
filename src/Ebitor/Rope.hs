@@ -4,6 +4,7 @@ module Ebitor.Rope
     , Position(..)
     , Rope
     , append
+    , appendFile
     , charWidth
     , concat
     , cons
@@ -28,6 +29,7 @@ module Ebitor.Rope
     , positionForCursor
     , positionForIndex
     , positionIndex
+    , readFile
     , remove
     , reverse
     , singleton
@@ -43,11 +45,12 @@ module Ebitor.Rope
     , unpackText
     , unwords
     , words
+    , writeFile
     ) where
 
 import Prelude hiding (length, null, concat, splitAt, take, takeWhile, drop,
                        dropWhile, reverse, words, lines, unwords, unlines,
-                       head, tail, init, last)
+                       head, tail, init, last, readFile, writeFile, appendFile)
 import qualified Prelude as P
 
 import qualified Data.Text as T
@@ -167,3 +170,12 @@ positionForCursor = R.positionForCursor
 
 positionForIndex :: Rope -> Int -> (Position, Rope)
 positionForIndex = R.positionForIndex
+
+readFile :: FilePath -> IO Rope
+readFile = R.readFile
+
+writeFile :: FilePath -> Rope -> IO ()
+writeFile = R.writeFile
+
+appendFile :: FilePath -> Rope -> IO ()
+appendFile = R.appendFile

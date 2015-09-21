@@ -40,6 +40,7 @@ data Command = SendKeys [Event]
              | Echo Message
              | Disconnect
              | CommandSequence [Command]
+             | UpdateDisplaySize (Int, Int)
              deriving (Generic, Show)
 instance FromJSON Command
 instance ToJSON Command
@@ -123,6 +124,7 @@ commander = Commander { actionMap = cmds
            , ("edit", edit)
            , ("quit", quit)
            , ("send-keys", sendKeys)
+           , ("w", write)
            , ("wq", writeQuit)
            , ("write", write)
            ]

@@ -8,7 +8,8 @@ import Data.Ord (Ordering(..))
 import Data.String (IsString, fromString)
 import Prelude hiding (length, null, concat, splitAt, take, takeWhile, drop,
                        dropWhile, reverse, words, lines, unwords, unlines,
-                       span, break, head, last, init, tail)
+                       span, break, head, last, init, tail, readFile, writeFile,
+                       appendFile)
 import qualified Data.Foldable as F
 import qualified Data.List as L
 import qualified Prelude as P
@@ -398,3 +399,13 @@ positionForIndex r@(Leaf l (Just c) t) q = (findPosition (0, c) t, r)
         | otherwise =
             let (p', t') = advancePosition p t
             in  findPosition p' t'
+
+
+readFile :: RopePart a => FilePath -> IO (GenericRope a)
+readFile = fmap pack . P.readFile
+
+writeFile :: RopePart a => FilePath -> GenericRope a -> IO ()
+writeFile path = P.writeFile path . unpack
+
+appendFile :: RopePart a => FilePath -> GenericRope a -> IO ()
+appendFile path = P.appendFile path . unpack

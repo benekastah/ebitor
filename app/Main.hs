@@ -8,8 +8,8 @@ import Control.Monad.Fix (fix)
 import Control.Monad.STM (atomically)
 import Data.Maybe
 import GHC.Int (Int64)
-import Network.Socket hiding (recv, send, shutdown)
-import Network.Socket.ByteString.Lazy (recv, send)
+import Network.Socket hiding (shutdown)
+import System.Environment (getArgs)
 import System.IO
 import System.Posix.Signals as Sig
 
@@ -45,9 +45,6 @@ setUpLogger = do
     f <- fileHandler "logs/vty.log" DEBUG
     updateGlobalLogger loggerName (setHandlers [f] . setLevel DEBUG)
 
-
-sendCommand :: Socket -> Command -> IO Int64
-sendCommand s = send s . encodeCommand
 
 setCursor :: Vty -> Window -> IO ()
 setCursor vty w = do
@@ -105,7 +102,10 @@ processEvent :: App -> IO ()
 processEvent app = do
     let sock = serverSocket app
     e <- nextEvent $ term app
-    sendCommand sock $ SendKeys [e]
+    case e of
+        EvKey _ _ -> sendCommand sock $ SendKeys [e]
+        EvResize w h -> sendCommand sock $ UpdateDisplaySize (w, h)
+        _ -> return 0
     return ()
 
 getVty :: IO Vty
@@ -147,9 +147,20 @@ main = do
 
     -- Thread to process responses
     forkIO $ whileRunning programStatus $ do
-        resp <- liftM decodeResponse $ recv sock 4096
+        infoM loggerName "Waiting for response..."
+        resp <- receiveResponse sock
+        infoM loggerName ("Response: " ++ show resp)
         when (isJust resp) $ handleResponse (fromJust resp) app
         return ()
+
+    -- Set initial display size
+    displayBounds (outputIface vty) >>= sendCommand sock . UpdateDisplaySize
+
+    args <- getArgs
+    case args of
+        [] -> return 0
+        [fname] -> sendCommand sock $ EditFile fname
+        _ -> sendCommand sock $ Echo (ErrorMessage "Invalid command-line arguments")
 
     -- Thread to process user events
     forkIO $ whileRunning programStatus $ processEvent app

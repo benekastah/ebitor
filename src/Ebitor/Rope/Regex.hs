@@ -6,6 +6,7 @@ module Ebitor.Rope.Regex
     , CompOption
     , ExecOption
     , compile
+    , compileDefault
     , execute
     , regexec
     , replace
@@ -17,10 +18,11 @@ import Data.Array((!),elems)
 
 import Text.Regex.Base(MatchArray,RegexContext(..),RegexMaker(..),RegexLike(..),Extract(..))
 import Text.Regex.Base.Impl(polymatch,polymatchM)
+import Text.Regex.Base.RegexLike (defaultExecOpt, defaultCompOpt)
+import Text.Regex.TDFA.Common(Regex(..),CompOption,ExecOption(captureGroups))
 import Text.Regex.TDFA.ReadRegex(parseRegex)
 import Text.Regex.TDFA.String() -- piggyback on RegexMaker for String
 import Text.Regex.TDFA.TDFA(patternToRegex)
-import Text.Regex.TDFA.Common(Regex(..),CompOption,ExecOption(captureGroups))
 
 import Data.Maybe(listToMaybe)
 import Text.Regex.TDFA.NewDFA.Engine(execMatch)
@@ -72,6 +74,9 @@ compile compOpt execOpt rope =
         Left err -> Left ("parseRegex for Ebitor.Rope.Regex failed:"++show err)
         Right pattern -> Right (patternToRegex pattern compOpt execOpt)
 
+compileDefault :: RopePart a => (GenericRope a) -> Either String Regex
+compileDefault = compile defaultCompOpt defaultExecOpt
+
 execute :: RopePart a => Regex      -- ^ Compiled regular expression
         -> (GenericRope a) -- ^ Rope to match against
         -> Either String (Maybe MatchArray)
@@ -97,7 +102,7 @@ replaceCount :: RopePart a
 replaceCount n r replacement haystack = replaceCount' n ("", haystack)
   where
     replaceCount' 0 (h1, h2) = R.append h1 h2
-    replaceCount' n (h1, h2) =
+    replaceCount' n haystack@(h1, h2) =
         case matchOnce r h2 of
             Just match ->
                 let (offset, len) = match ! 0
@@ -105,7 +110,7 @@ replaceCount n r replacement haystack = replaceCount' n ("", haystack)
                     h1' = R.concat [h1, prefix, replacement]
                     result' = R.drop len result
                 in  replaceCount' (n - 1) (h1', result')
-            Nothing -> haystack
+            Nothing -> replaceCount' 0 haystack
 
 
 replaceOne :: RopePart a

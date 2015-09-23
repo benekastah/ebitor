@@ -6,8 +6,9 @@ import Test.Framework
 import Text.Regex.TDFA
 
 import Ebitor.Rope
-import Ebitor.Rope.Regex
+import Ebitor.Rope.Regex ()
 import Ebitor.RopeUtils
+import Ebitor.Utils
 
 (=~*) :: String -> String -> Rope
 r1 =~* r2 = packRope r1 =~ packRope r2
@@ -17,3 +18,17 @@ test_match2 = assertEqual "hi there" ("hi there" =~* "[[:alpha:]]+[[:space:]][[:
 
 test_noMatch1 = assertEqual "" ("asdf" =~* "^b.*")
 test_noMatch2 = assertEqual "" ("hithere" =~* "[[:alpha:]]+[[:space:]][[:alpha:]]+")
+
+test_replace = assertEqual expected (replace reg replacement haystack)
+  where
+    expected = "Hey man man"
+    haystack = "Hey rude dude"
+    reg = fromRight $ regex ".ude"
+    replacement = "man"
+
+test_replaceOne = assertEqual expected (replaceOne reg replacement haystack)
+  where
+    expected = "Hey man dude"
+    haystack = "Hey rude dude"
+    reg = fromRight $ regex ".ude"
+    replacement = "man"

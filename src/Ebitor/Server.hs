@@ -188,7 +188,7 @@ windowFromEditor :: Editor -> Int -> Window
 windowFromEditor e = window r' (snd $ position e)
   where
     r = R.unlines $ drop (firstLine e - 1) (R.lines $ rope e)
-    reTab = fromRight $ RR.compile Regex.defaultCompOpt Regex.defaultExecOpt ("\t" :: R.Rope)
+    reTab = fromRight $ RR.compileDefault ("\t" :: R.Rope)
     r' = RR.replace reTab (R.pack $ replicate 8 ' ') r
 
 getScreen :: Session -> Maybe Message -> Response

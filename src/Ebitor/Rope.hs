@@ -30,7 +30,11 @@ module Ebitor.Rope
     , positionForIndex
     , positionIndex
     , readFile
+    , regex
     , remove
+    , replace
+    , replaceCount
+    , replaceOne
     , reverse
     , singleton
     , slice
@@ -60,6 +64,7 @@ import Ebitor.Rope.Cursor (Cursor(..), Position, newCursor, newPosition,
 import Ebitor.Rope.Generic (GenericRope(..), IndexError(..), charWidth)
 import qualified Ebitor.Rope.Cursor as R
 import qualified Ebitor.Rope.Generic as R
+import qualified Ebitor.Rope.Regex as R
 
 
 type Rope = GenericRope T.Text
@@ -179,3 +184,15 @@ writeFile = R.writeFile
 
 appendFile :: FilePath -> Rope -> IO ()
 appendFile = R.appendFile
+
+replaceCount :: Int -> R.Regex -> Rope -> Rope -> Rope
+replaceCount = R.replaceCount
+
+replaceOne :: R.Regex -> Rope -> Rope -> Rope
+replaceOne = R.replaceOne
+
+replace :: R.Regex -> Rope -> Rope -> Rope
+replace = R.replace
+
+regex :: Rope -> Either String R.Regex
+regex = R.compileDefault

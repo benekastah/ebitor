@@ -23,8 +23,6 @@ library
                        , Ebitor.Language
                        , Ebitor.Rope
                        , Ebitor.Rope.Cursor
-                       , Ebitor.Rope.Generic
-                       , Ebitor.Rope.Part
                        , Ebitor.Rope.Regex
                        , Ebitor.Server
                        , Ebitor.Utils
@@ -36,6 +34,7 @@ library
                        , containers
                        , directory
                        , filepath
+                       , fingertree == 0.1.1.*
                        , hslogger == 1.2.*
                        , hslua >= 0.4.0 && < 0.4.1
                        , network == 2.6.2.*

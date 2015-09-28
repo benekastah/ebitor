@@ -17,6 +17,7 @@ import GHC.Generics
 import Data.Aeson
 
 import qualified Ebitor.Rope as R
+import qualified Ebitor.Rope.Cursor as R
 
 data Orientation = Horizontal | Vertical
             deriving (Generic, Show, Eq)

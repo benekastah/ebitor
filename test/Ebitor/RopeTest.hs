@@ -12,21 +12,10 @@ import Test.QuickCheck.Gen
 import qualified Data.Text as T
 
 import Ebitor.Rope as R
-import Ebitor.Rope.Generic (GenericRope(..))
-import Ebitor.Rope.Part (RopePart)
 import Ebitor.RopeUtils
-import Ebitor.Utils (fromRight)
 
 
 test_empty = assertBool $ R.null empty
-
-
-prop_length :: Rope -> Bool
-prop_length r@(Leaf l _ t) = l == T.length t
-prop_length r = sumChildLengths r == R.length r
-  where
-    sumChildLengths r@(Leaf _ _ _) = R.length r
-    sumChildLengths (Node _ _ a b) = sumChildLengths a + sumChildLengths b
 
 prop_packLength :: String -> Bool
 prop_packLength s = P.length s == R.length (packRope s)
@@ -38,42 +27,26 @@ prop_appendLength a b = R.length (R.append a b) == (R.length a) + (R.length b)
 prop_append :: String -> String -> Bool
 prop_append a b = unpack (R.append (packRope a) (packRope b)) == a ++ b
 
+test_empty_length = assertEqual 0 (R.length R.empty)
+
 test_append_lf =
-    assertEqual (append (Leaf 6 Nothing "qwerty") (Leaf 5 Nothing "\nasdf"))
-                (Node 11 Nothing (Leaf 7 Nothing "qwerty\n") (Leaf 4 Nothing "asdf"))
+    assertEqual (append "qwerty" "\nasdf") (append "qwerty\n" "asdf")
 
 
 prop_unpack :: String -> Bool
 prop_unpack s = unpack (packRope s) == s
 
 
-prop_indexLessThanZero :: Rope -> Property
-prop_indexLessThanZero r = forAll (suchThat arbitrary (<0)) $ \i ->
-    index r i == Left IndexLessThanZero
-
-prop_indexOutOfBounds :: Rope -> Property
-prop_indexOutOfBounds r = forAll (suchThat arbitrary (>= (R.length r))) $ \i ->
-    index r i == Left IndexOutOfBounds
-
-prop_indexEmptyString :: Int -> Bool
-prop_indexEmptyString i = isLeft $ index empty i
-
-prop_index =
-    forAll (suchThat arbitrary (/= "")) $ \s ->
-    forAll (choose (0, (P.length s) - 1)) $ \i ->
-    index (packRope s) i == Right (s !! i)
-
-
 prop_insertIndexLessThanZero :: Rope -> Char -> Property
 prop_insertIndexLessThanZero r ch = forAll (suchThat arbitrary (<0)) $ \i ->
-    insert r i ch == Left IndexLessThanZero
+    insert r i ch == insert r 0 ch
 
 prop_insertIndexOutOfBounds :: Rope -> Char -> Property
 prop_insertIndexOutOfBounds r ch = forAll (suchThat arbitrary (> (R.length r))) $ \i ->
-    insert r i ch == Left IndexOutOfBounds
+    insert r i ch == insert r (R.length r) ch
 
 prop_insert s ch = forAll (choose (0, (P.length s))) $ \i ->
-    unpack (fromRight $ insert (packRope s) i ch) == insertStr s i
+    unpack (insert (packRope s) i ch) == insertStr s i
   where
     insertStr s i =
         let (s1, s2) = P.splitAt i s
@@ -82,14 +55,14 @@ prop_insert s ch = forAll (choose (0, (P.length s))) $ \i ->
 
 prop_insertTextIndexLessThanZero :: Rope -> T.Text -> Property
 prop_insertTextIndexLessThanZero r t = forAll (suchThat arbitrary (<0)) $ \i ->
-    insertText r i t == Left IndexLessThanZero
+    insertText r i t == insertText r 0 t
 
 prop_insertTextIndexOutOfBounds :: Rope -> T.Text -> Property
 prop_insertTextIndexOutOfBounds r t = forAll (suchThat arbitrary (> (R.length r))) $ \i ->
-    insertText r i t == Left IndexOutOfBounds
+    insertText r i t == insertText r (R.length r) t
 
 prop_insertText s t = forAll (choose (0, (P.length s))) $ \i ->
-    unpack (fromRight $ insertText (packRope s) i t) == insertStr s i
+    unpack (insertText (packRope s) i t) == insertStr s i
   where
     insertStr s i =
         let (s1, s2) = P.splitAt i s
@@ -102,26 +75,26 @@ prop_singleton ch = packRope [ch] == R.singleton ch
 
 prop_removeIndexLessThanZero :: Rope -> Property
 prop_removeIndexLessThanZero r = forAll (suchThat arbitrary (<0)) $ \i ->
-    remove r i == Left IndexLessThanZero
+    remove r i 1 == r
 
 prop_removeIndexOutOfBounds :: Rope -> Property
 prop_removeIndexOutOfBounds r = forAll (suchThat arbitrary (>= (R.length r))) $ \i ->
-    remove r i == Left IndexOutOfBounds
+    remove r i 1 == r
 
 prop_removeLength =
     forAll (suchThat arbitrary (/= "")) $ \s ->
     forAll (choose (0, (P.length s - 1))) $ \i ->
         let r = packRope s
-            r' = fromRight $ remove r i
+            r' = remove r i 1
         in  R.length r - 1 == R.length r'
 
 
-test_remove1 = assertEqual (R.remove "hi there!" 0) (Right "i there!")
+test_remove1 = assertEqual (R.remove "hi there!" 0 1) "i there!"
 test_remove2 =
     let r = "hi there!"
         len = R.length r - 1
-    in  assertEqual (R.remove r len) (Right "hi there")
-test_remove3 = assertEqual (R.remove "hi there!" 2) (Right "hithere!")
+    in  assertEqual (R.remove r len 1) "hi there"
+test_remove3 = assertEqual (R.remove "hi there!" 2 1) "hithere!"
 
 
 prop_concat ls = foldl' (++) "" ls == R.unpack (R.concat $ map packRope ls)
@@ -142,25 +115,19 @@ prop_uncons s1@(ch1:s2) =
     in  ch1 == ch2 && R.unpack r == s2
 
 
-prop_words s = map unpack (R.words $ pack s) == P.words s
-prop_lines_cr = forAll (suchThat arbitrary (\s -> findIndex (=='\n') s == Nothing)) $ \s ->
-    map unpack (R.lines $ pack s) == P.lines (map (\c -> if c == '\r' then '\n' else c) s)
-prop_lines_lf = forAll (suchThat arbitrary (\s -> findIndex (=='\r') s == Nothing)) $ \s ->
-    map unpack (R.lines $ pack s) == P.lines s
-prop_lines_crlf = forAll (suchThat arbitrary (\s -> findIndex (=='\r') s == Nothing)) $ \s ->
-    let s' = intercalate "\r\n" $ P.lines s
-    in  map unpack (R.lines $ pack s') == P.lines s
-prop_unwords s = unpack (R.unwords $ map pack s) == P.unwords s
+-- prop_words s = map unpack (R.words $ pack s) == P.words s
+prop_lines s = P.lines s == map unpack (R.lines $ packRope s)
+-- prop_unwords s = unpack (R.unwords $ map pack s) == P.unwords s
 prop_unlines s = unpack (R.unlines $ map pack s) == P.unlines s
 
-prop_head = forAll (suchThat arbitrary ((>0) . P.length)) $ \s ->
-    R.head (packRope s) == P.head s
-prop_last = forAll (suchThat arbitrary ((>0) . P.length)) $ \s ->
-    R.last (packRope s) == P.last s
-prop_init = forAll (suchThat arbitrary ((>0) . P.length)) $ \s ->
-    R.unpack (R.init $ packRope s) == P.init s
-prop_tail = forAll (suchThat arbitrary ((>0) . P.length)) $ \s ->
-    R.unpack (R.tail $ packRope s) == P.tail s
+-- prop_head = forAll (suchThat arbitrary ((>0) . P.length)) $ \s ->
+--     R.head (packRope s) == P.head s
+-- prop_last = forAll (suchThat arbitrary ((>0) . P.length)) $ \s ->
+--     R.last (packRope s) == P.last s
+-- prop_init = forAll (suchThat arbitrary ((>0) . P.length)) $ \s ->
+--     R.unpack (R.init $ packRope s) == P.init s
+-- prop_tail = forAll (suchThat arbitrary ((>0) . P.length)) $ \s ->
+--     R.unpack (R.tail $ packRope s) == P.tail s
 
 prop_slice s =
     forAll (suchThat arbitrary (>=0)) $ \start ->
@@ -170,5 +137,3 @@ prop_slice s =
 prop_sliceEmpty1 r i = "" == R.slice r i i
 prop_sliceEmpty2 r = forAll (suchThat arbitrary (>= (R.length r))) $ \i ->
     "" == R.slice r i (i + 1)
-
-prop_sliceOrder r a b = (R.slice r a b) == (R.slice r b a)

@@ -47,6 +47,7 @@ import Ebitor.Utils
 import Ebitor.Window hiding (focus)
 import qualified Ebitor.Command as C
 import qualified Ebitor.Rope as R
+import qualified Ebitor.Rope.Cursor as R
 import qualified Ebitor.Rope.Regex as RR
 import qualified Ebitor.Window as W
 

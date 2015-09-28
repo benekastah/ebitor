@@ -6,7 +6,7 @@ import Test.Framework
 import Text.Regex.TDFA
 
 import Ebitor.Rope
-import Ebitor.Rope.Regex ()
+import Ebitor.Rope.Regex (replace, replaceOne, compileDefault)
 import Ebitor.RopeUtils
 import Ebitor.Utils
 
@@ -23,12 +23,12 @@ test_replace = assertEqual expected (replace reg replacement haystack)
   where
     expected = "Hey man man"
     haystack = "Hey rude dude"
-    reg = fromRight $ regex ".ude"
+    reg = fromRight $ compileDefault ".ude"
     replacement = "man"
 
 test_replaceOne = assertEqual expected (replaceOne reg replacement haystack)
   where
     expected = "Hey man dude"
     haystack = "Hey rude dude"
-    reg = fromRight $ regex ".ude"
+    reg = fromRight $ compileDefault ".ude"
     replacement = "man"

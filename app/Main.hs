@@ -27,6 +27,7 @@ import Ebitor.Rope (Rope)
 import Ebitor.Server
 import Ebitor.Window (Window(..), Orientation(..))
 import qualified Ebitor.Rope as R
+import qualified Ebitor.Rope.Cursor as R
 import qualified Ebitor.Window as W
 
 

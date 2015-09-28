@@ -29,26 +29,25 @@ import Text.Regex.TDFA.NewDFA.Engine(execMatch)
 import Text.Regex.TDFA.NewDFA.Tester as Tester(matchTest)
 import Text.Regex.TDFA.NewDFA.Uncons as Uncons(Uncons(..))
 
-import Ebitor.Rope.Part (RopePart)
-import Ebitor.Rope.Generic (GenericRope)
-import qualified Ebitor.Rope.Generic as R
+import Ebitor.Rope (Rope)
+import qualified Ebitor.Rope as R
 
-instance RopePart a => Extract (GenericRope a) where
+instance Extract Rope where
     before = R.take
     after = R.drop
     empty = R.empty
 
-instance RopePart a => Uncons (GenericRope a) where
+instance Uncons Rope where
     uncons = R.uncons
 
-instance RopePart a => RegexContext Regex (GenericRope a) (GenericRope a) where
+instance RegexContext Regex Rope Rope where
     match = polymatch
     matchM = polymatchM
 
-instance RopePart a => RegexMaker Regex CompOption ExecOption (GenericRope a) where
+instance RegexMaker Regex CompOption ExecOption Rope where
     makeRegexOptsM c e source = makeRegexOptsM c e (R.unpack source)
 
-instance RopePart a => RegexLike Regex (GenericRope a) where
+instance RegexLike Regex Rope where
     matchOnce r s = listToMaybe (matchAll r s)
     matchAll r s = execMatch r 0 '\n' s
     matchCount r s = length (matchAll r' s)
@@ -64,27 +63,26 @@ instance RopePart a => RegexLike Regex (GenericRope a) where
         map (fmap (\ol@(off,len) -> (R.take len (R.drop off source),ol)))
             (matchAll regex source)
 
-compile :: RopePart a
-        => CompOption -- ^ Flags (summed together)
+compile :: CompOption -- ^ Flags (summed together)
         -> ExecOption -- ^ Flags (summed together)
-        -> (GenericRope a) -- ^ The regular expression to compile
+        -> Rope -- ^ The regular expression to compile
         -> Either String Regex -- ^ Returns: the compiled regular expression
 compile compOpt execOpt rope =
     case parseRegex (R.unpack rope) of
         Left err -> Left ("parseRegex for Ebitor.Rope.Regex failed:"++show err)
         Right pattern -> Right (patternToRegex pattern compOpt execOpt)
 
-compileDefault :: RopePart a => (GenericRope a) -> Either String Regex
+compileDefault :: Rope -> Either String Regex
 compileDefault = compile defaultCompOpt defaultExecOpt
 
-execute :: RopePart a => Regex      -- ^ Compiled regular expression
-        -> (GenericRope a) -- ^ Rope to match against
+execute :: Regex      -- ^ Compiled regular expression
+        -> Rope -- ^ Rope to match against
         -> Either String (Maybe MatchArray)
 execute r rope = Right (matchOnce r rope)
 
-regexec :: RopePart a => Regex      -- ^ Compiled regular expression
-        -> (GenericRope a) -- ^ Rope to match against
-        -> Either String (Maybe (GenericRope a, GenericRope a, GenericRope a, [GenericRope a]))
+regexec :: Regex      -- ^ Compiled regular expression
+        -> Rope -- ^ Rope to match against
+        -> Either String (Maybe (Rope, Rope, Rope, [Rope]))
 regexec r rope =
     case matchOnceText r rope of
         Nothing -> Right (Nothing)
@@ -93,12 +91,11 @@ regexec r rope =
                 rest = map fst (tail (elems mt)) -- will be []
             in  Right (Just (pre,main,post,rest))
 
-replaceCount :: RopePart a
-             => Int
+replaceCount :: Int
              -> Regex
-             -> (GenericRope a)
-             -> (GenericRope a)
-             -> (GenericRope a)
+             -> Rope
+             -> Rope
+             -> Rope
 replaceCount n r replacement haystack = replaceCount' n ("", haystack)
   where
     replaceCount' 0 (h1, h2) = R.append h1 h2
@@ -113,16 +110,14 @@ replaceCount n r replacement haystack = replaceCount' n ("", haystack)
             Nothing -> replaceCount' 0 haystack
 
 
-replaceOne :: RopePart a
-           => Regex
-           -> (GenericRope a)
-           -> (GenericRope a)
-           -> (GenericRope a)
+replaceOne :: Regex
+           -> Rope
+           -> Rope
+           -> Rope
 replaceOne = replaceCount 1
 
-replace :: RopePart a
-        => Regex
-        -> (GenericRope a)
-        -> (GenericRope a)
-        -> (GenericRope a)
+replace :: Regex
+        -> Rope
+        -> Rope
+        -> Rope
 replace = replaceCount (-1)

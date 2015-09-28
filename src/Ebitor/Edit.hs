@@ -18,7 +18,8 @@ import GHC.Generics
 
 import Data.Aeson (FromJSON, ToJSON)
 
-import Ebitor.Rope (Rope, Position, Cursor(..), positionIndex, positionCursor)
+import Ebitor.Rope (Rope)
+import Ebitor.Rope.Cursor
 import qualified Ebitor.Rope as R
 
 data Editor = Editor
@@ -35,7 +36,7 @@ instance ToJSON Editor
 newEditor :: Editor
 newEditor = Editor { filePath = Nothing
                    , rope = R.empty
-                   , position = R.newPosition
+                   , position = newPosition
                    , firstLine = 1
                    }
 
@@ -45,30 +46,27 @@ editorIndex = positionIndex . position
 editorCursor = positionCursor . position
 
 insertChar :: Char -> Editor -> Editor
-insertChar c editor = case R.insert (rope editor) idx c of
-    (Right r) ->
-        let (p, r') = R.positionForIndex r $ idx + 1
-        in  editor { rope = r', position = p }
-    _ -> unreachable
+insertChar c editor =
+    let r = R.insert (rope editor) idx c
+        p = R.positionForIndex r $ idx + 1
+    in  editor { rope = r, position = p }
     where idx = editorIndex editor
 
 insertString :: String -> Editor -> Editor
-insertString s editor = case R.insertString (rope editor) idx s of
-    (Right r) ->
-        let (p, r') = R.positionForIndex r $ idx + length s
-        in  editor { rope = r', position = p }
-    _ -> unreachable
+insertString s editor =
+    let r = R.insertString (rope editor) idx s
+        p = R.positionForIndex r $ idx + length s
+    in  editor { rope = r, position = p }
     where idx = editorIndex editor
 
 insertNewline :: Editor -> Editor
 insertNewline = insertChar '\n'
 
 deleteChar :: Int -> Editor -> Editor
-deleteChar idx editor = case R.remove (rope editor) idx of
-    (Right r) ->
-        let (p, r') = R.positionForIndex r $ idx
-        in  editor { rope = r', position = p}
-    _ -> editor
+deleteChar idx editor =
+    let r = R.remove (rope editor) idx 1
+        p = R.positionForIndex r $ idx
+    in  editor { rope = r, position = p}
 
 backspace :: Editor -> Editor
 backspace editor = deleteBack editor
@@ -84,8 +82,8 @@ backspace editor = deleteBack editor
 cursorMove :: (Cursor -> Cursor) -> Editor -> Editor
 cursorMove f editor =
     let (_, c) = position editor
-        (p, r') = R.positionForCursor (rope editor) (f c)
-    in  editor { rope = r', position = p }
+        p = R.positionForCursor (rope editor) (f c)
+    in  editor { position = p }
 
 cursorUp :: Editor -> Editor
 cursorUp = cursorMove $ \(Cursor (ln, col)) -> Cursor (ln - 1, col)

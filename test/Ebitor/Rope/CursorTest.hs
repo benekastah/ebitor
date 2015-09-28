@@ -8,7 +8,6 @@ import Test.Framework
 
 import Ebitor.Rope (Rope)
 import Ebitor.Rope.Cursor
-import Ebitor.Rope.Generic (buildCursorPos)
 import Ebitor.RopeUtils
 import qualified Ebitor.Rope as R
 
@@ -36,68 +35,68 @@ patchOfOldSnowCRLF = packRope $ intercalate "\r\n" patchOfOldSnow
 
 
 test_positionForCursorCR =
-    assertEqual (27, R.Cursor (3, 6))
-                (fst $ R.positionForCursor patchOfOldSnowCR (R.Cursor (3, 6)))
+    assertEqual (27, Cursor (3, 6))
+                (R.positionForCursor patchOfOldSnowCR (Cursor (3, 6)))
 test_positionForIndexCR =
-    assertEqual (27, R.Cursor (3, 6))
-                (fst $ R.positionForIndex patchOfOldSnowCR 27)
+    assertEqual (27, Cursor (3, 6))
+                (R.positionForIndex patchOfOldSnowCR 27)
 
 
 test_positionForCursorLF =
-    assertEqual (27, R.Cursor (3, 6))
-                (fst $ R.positionForCursor patchOfOldSnowLF (R.Cursor (3, 6)))
+    assertEqual (27, Cursor (3, 6))
+                (R.positionForCursor patchOfOldSnowLF (Cursor (3, 6)))
 test_positionForIndexLF =
-    assertEqual (27, R.Cursor (3, 6))
-                (fst $ R.positionForIndex patchOfOldSnowLF 27)
+    assertEqual (27, Cursor (3, 6))
+                (R.positionForIndex patchOfOldSnowLF 27)
 
 
 test_positionForCursorCRLF =
-    assertEqual (29, R.Cursor (3, 6))
-                (fst $ R.positionForCursor patchOfOldSnowCRLF (R.Cursor (3, 6)))
+    assertEqual (29, Cursor (3, 6))
+                (R.positionForCursor patchOfOldSnowCRLF (Cursor (3, 6)))
 test_positionForIndexCRLF =
-    assertEqual (29, R.Cursor (3, 6))
-                (fst $ R.positionForIndex patchOfOldSnowCRLF 29)
+    assertEqual (29, Cursor (3, 6))
+                (R.positionForIndex patchOfOldSnowCRLF 29)
 
 
 test_positionForCursorPastEOL =
-    assertEqual (61, R.Cursor (3, 40))
-                (fst $ R.positionForCursor patchOfOldSnowLF (R.Cursor (3, 100)))
+    assertEqual (61, Cursor (3, 40))
+                (R.positionForCursor patchOfOldSnowLF (Cursor (3, 100)))
 
 
 test_positionForCursorAtEOL =
-    assertEqual (61, R.Cursor (3, 40))
-                (fst $ R.positionForCursor patchOfOldSnowLF (R.Cursor (3, 40)))
+    assertEqual (61, Cursor (3, 40))
+                (R.positionForCursor patchOfOldSnowLF (Cursor (3, 40)))
 
 
 test_positionForCursorBeforeLine1 =
-    assertEqual (0, R.Cursor (1, 1))
-                (fst $ R.positionForCursor patchOfOldSnowLF (R.Cursor (1, 0)))
+    assertEqual (0, Cursor (1, 1))
+                (R.positionForCursor patchOfOldSnowLF (Cursor (1, 0)))
 
 
 test_positionForCursorBeforeLine2 =
-    assertEqual (0, R.Cursor (1, 1))
-                (fst $ R.positionForCursor patchOfOldSnowLF (R.Cursor (1, -1000)))
+    assertEqual (0, Cursor (1, 1))
+                (R.positionForCursor patchOfOldSnowLF (Cursor (1, -1000)))
 
 
 test_positionForCursorInTab =
-    assertEqual (1, R.Cursor (1, 9))
-                (fst $ R.positionForCursor patchOfOldSnowLF (R.Cursor (1, 4)))
+    assertEqual (1, Cursor (1, 9))
+                (R.positionForCursor patchOfOldSnowLF (Cursor (1, 4)))
 test_positionForIndexInCRLFSequence =
-    assertEqual (22, R.Cursor (2, 1))
-                (fst $ R.positionForIndex patchOfOldSnowCRLF 21)
+    assertEqual (22, Cursor (2, 1))
+                (R.positionForIndex patchOfOldSnowCRLF 21)
 
 
 test_positionForCursorBeforeDocument =
-    assertEqual (0, R.Cursor (1, 1))
-                (fst $ R.positionForCursor patchOfOldSnowLF (R.Cursor (0, 4)))
+    assertEqual (0, Cursor (1, 1))
+                (R.positionForCursor patchOfOldSnowLF (Cursor (0, 4)))
 test_positionForIndexBeforeDocument =
-    assertEqual (0, R.Cursor (1, 1))
-                (fst $ R.positionForIndex patchOfOldSnowLF (-10))
+    assertEqual (0, Cursor (1, 1))
+                (R.positionForIndex patchOfOldSnowLF (-10))
 
 
 test_positionForCursorPastDocument =
-    assertEqual (R.length patchOfOldSnowLF, R.Cursor (13, 15))
-                (fst $ R.positionForCursor patchOfOldSnowLF (R.Cursor (1000, 1)))
+    assertEqual (R.length patchOfOldSnowLF, Cursor (13, 15))
+                (R.positionForCursor patchOfOldSnowLF (Cursor (1000, 1)))
 test_positionForIndexPastDocument =
-    assertEqual (R.length patchOfOldSnowLF, R.Cursor (13, 15))
-                (fst $ R.positionForIndex patchOfOldSnowLF (R.length patchOfOldSnowLF + 50))
+    assertEqual (R.length patchOfOldSnowLF, Cursor (13, 15))
+                (R.positionForIndex patchOfOldSnowLF (R.length patchOfOldSnowLF + 50))

@@ -116,7 +116,7 @@ prop_uncons s1@(ch1:s2) =
 
 
 -- prop_words s = map unpack (R.words $ pack s) == P.words s
-prop_lines s = P.lines s == map unpack (R.lines $ packRope s)
+prop_lines s = map packRope (P.lines s) == R.lines (packRope s)
 -- prop_unwords s = unpack (R.unwords $ map pack s) == P.unwords s
 prop_unlines s = unpack (R.unlines $ map pack s) == P.unlines s
 

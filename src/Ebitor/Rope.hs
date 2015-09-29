@@ -2,6 +2,7 @@
 module Ebitor.Rope where
 
 import Control.Applicative (pure)
+import Data.Char
 import Data.Foldable (toList)
 import Data.List (foldl')
 import Data.Monoid
@@ -117,21 +118,6 @@ splitAt i r
         let (a, b) = T.splitAt i t
         in  (textToChunk a, textToChunk b)
 
-splitAtLine l r
-    | l < 1 = (empty, r)
-    | otherwise =
-        let (a, b) = F.split ((>= l) . sNumLines) $ fromRope r
-            (a', b') = case viewl b of
-                EmptyL -> (a, b)
-                (Chunk _ t) :< b' ->
-                    let lns = T.lines t
-                        (lnsA, lnsB) = Prelude.splitAt (l - sNumLines (measure a)) lns
-                        ca = textToChunk $ T.unlines lnsA
-                        cb = textToChunk $ T.unlines lnsB
-                    in  (a |> ca, cb <| b')
-        in  (Rope a', Rope b')
-
-
 take :: Int -> Rope -> Rope
 take = (fst .) . Ebitor.Rope.splitAt
 
@@ -174,27 +160,15 @@ takeWhileEnd f = Rope . takeWhileEnd' . fromRope
             else
                 F.singleton $ Chunk l' t'
 
-intercalate :: Rope -> [Rope] -> Rope
-intercalate sep rs = intercalate' empty rs
-  where
-    intercalate' result [] = result
-    intercalate' result (r:rs) = intercalate' (Ebitor.Rope.concat [result, sep, r]) rs
-
 lines :: Rope -> [Rope]
-lines r
-    | Ebitor.Rope.null r = []
-    | otherwise = linesT F.empty [] $ fromRope r
-  where
-    linesT ln lns r = case viewr r of
-        EmptyR -> (Rope ln):lns
-        rest :> chunk@(Chunk l t) -> case T.findIndex (== '\n') $ T.reverse t of
-            Nothing -> linesT (chunk <| ln) lns rest
-            Just i ->
-                let (t', ln') = T.splitAt (l - i) t
-                in  linesT F.empty ((Rope $ textToChunk ln' <| ln):lns) (r |> textToChunk t')
+lines = map pack . Prelude.lines . unpack
 
 unlines :: [Rope] -> Rope
-unlines = intercalate "\n"
+unlines [] = empty
+unlines (x:xs) = unlines' x xs
+  where
+    unlines' result [] = append result "\n"
+    unlines' result (x:xs) = unlines' (Ebitor.Rope.concat [result, "\n", x]) xs
 
 cons :: Char -> Rope -> Rope
 cons ch r = insert r 0 ch
@@ -224,7 +198,7 @@ insertString r i = insertText r i . T.pack
 
 insertText :: Rope -> Int -> Text -> Rope
 insertText r i t =
-    let (a, b) = Ebitor.Rope.splitAt (i + 1) r
+    let (a, b) = Ebitor.Rope.splitAt i r
     in  Ebitor.Rope.concat [a, packText t, b]
 
 getSlice :: Int -> Int -> (Int, Int)
@@ -241,6 +215,7 @@ slice r start end
 
 remove :: Rope -> Int -> Int -> Rope
 remove r start len
+    | start < 0 = r
     | len == 0 = r
     | otherwise =
         let (a, b) = Ebitor.Rope.splitAt start r
@@ -249,7 +224,18 @@ remove r start len
 -- Cursors
 charWidth :: Char -> Int
 charWidth '\t' = 8
-charWidth _ = 1
+charWidth '\n' = 0
+charWidth '\r' = 0
+charWidth '\v' = 0
+charWidth '\f' = 0
+charWidth c
+    | isControl c = 0
+    | isPrint c = 1
+
+charHeight :: Char -> Int
+charHeight '\n' = 1
+charHeight '\r' = 1
+charHeight _ = 0
 
 positionForIndex :: Rope -> Int -> Position
 positionForIndex r i
@@ -259,29 +245,45 @@ positionForIndex r i
             lineNo = numLines a
             partialLine = takeWhileEnd (/= '\n') a
             colNo = foldl' (+) 0 $ map charWidth $ unpack partialLine
-        in  (Ebitor.Rope.length a, Cursor (lineNo, colNo))
+        in  (Ebitor.Rope.length a, Cursor (lineNo + 1, colNo + 1))
+
+splitBeforeLine :: Rope -> Int -> (Rope, Rope)
+splitBeforeLine r i =
+    let (a, b) = F.split ((>= (i - 1)) . sNumLines) $ fromRope r
+    in  (Rope a, Rope b)
+
+advanceCursor :: Cursor -> Cursor -> Rope -> Rope -> (Cursor, Rope, Rope)
+advanceCursor target@(Cursor (l, c)) curs@(Cursor (curLn, curCol)) prefix r
+    | curs >= target = (curs, prefix, r)
+    | otherwise = case uncons r of
+        Just (ch, r') ->
+            let curLn' = curLn + charHeight ch
+                curCol' = if curLn' /= curLn then 1 else curCol + charWidth ch
+                prefix' = snoc prefix ch
+                curs' = Cursor (curLn', curCol')
+            in  if curLn' < l then
+                advanceCursor target (Cursor (curLn', curCol')) prefix' r'
+            else if curLn' == l && curCol' < c then
+                advanceCursor target curs' prefix' r'
+            else if curLn == l && curLn' /= l then
+                (curs, prefix, r)
+            else
+                (curs', prefix', r')
+        Nothing -> (curs, prefix, r)
 
 positionForCursor :: Rope -> Cursor -> Position
-positionForCursor r (Cursor (l, c))
-    | l < 0 = newPosition
-    | l > totalLines = positionForCursor r $ Cursor (totalLines, 1)
-    | c < 0 = positionForCursor r $ Cursor (l, 1)
+positionForCursor r target@(Cursor (l, c))
+    | l <= 0 = newPosition
+    | c <= 0 = positionForCursor r $ Cursor (l, 1)
     | otherwise =
-        let (a, b) = splitAtLine l r
-            (col, a', b') = advanceCol 1 empty b
-            i = Ebitor.Rope.length $ append a a'
-        in  (i, Cursor (l, col))
+        let (a, b) = splitBeforeLine r l
+            l' = numLines a + 1
+            b' = takeWhileEnd (/= '\n') a
+            (curs, a', _) = advanceCursor target (Cursor (l', 1)) empty (append b' b)
+            i = Ebitor.Rope.length (append a a') - Ebitor.Rope.length b'
+        in  (i, curs)
   where
     totalLines = numLines r
-    advanceCol c prefix r = case uncons r of
-        Just (ch, r') ->
-            let c' = c + charWidth ch
-                prefix' = snoc prefix ch
-            in  if c' >= c then
-                (c', prefix', r')
-            else
-                advanceCol c' prefix' r'
-        Nothing -> (c, prefix, r)
 
 -- File operations
 readFile :: FilePath -> IO Rope

@@ -185,7 +185,7 @@ receiveResponse = fmap decodeResponse . receiveData
 receiveCommand :: Socket -> IO (Maybe Command)
 receiveCommand = fmap decodeCommand . receiveData
 
-windowFromEditor :: Editor -> Int -> Window
+windowFromEditor :: Editor -> Maybe Int -> Window
 windowFromEditor e = window r' (snd $ position e)
   where
     r = R.unlines $ drop (firstLine e - 1) (R.lines $ rope e)
@@ -196,10 +196,10 @@ getScreen :: Session -> Maybe Message -> Response
 getScreen sess msg = Screen win
   where
     displaySize' = displaySize sess
-    editWindow = windowFromEditor (editor sess) 0
-    commandBar = windowFromEditor (commandEditor sess) 1
+    editWindow = windowFromEditor (editor sess) Nothing
+    commandBar = windowFromEditor (commandEditor sess) (Just 1)
     statusBar =
-        let windowFromText t = window (R.pack $ T.unpack t) R.newCursor 1
+        let windowFromText t = window (R.pack $ T.unpack t) R.newCursor (Just 1)
         in  case msg of
             Just (Message m) -> windowFromText m
             Just (ErrorMessage m) -> windowFromText m

@@ -84,7 +84,7 @@ imageForWindow w = imageForWindow' Horizontal w
         let ropeLines = R.lines r
             img = vertCat $ map (resizeHeight 1 . string defAttr . R.unpack) ropeLines
             resizeDimension = if o == Horizontal then resizeHeight else resizeWidth
-        in  resizeDimension s img
+        in  resizeDimension (maybe 0 id s) img
 
 handleResponse :: Response -> App -> IO ()
 handleResponse (Screen w) app = do

@@ -24,18 +24,21 @@ data Orientation = Horizontal | Vertical
 instance FromJSON Orientation
 instance ToJSON Orientation
 
--- TODO change Int to Maybe Int here
-data Window = ContentWindow R.Rope R.Cursor Int Bool
+data Window = ContentWindow { cwContent :: R.Rope
+                            , cwCursor :: R.Cursor
+                            , cwSize :: Maybe Int
+                            , cwHasFocus :: Bool
+                            }
             | LayoutWindow Orientation [Window]
             deriving (Generic, Show, Eq)
 instance FromJSON Window
 instance ToJSON Window
 
-window :: R.Rope -> R.Cursor -> Int -> Window
+window :: R.Rope -> R.Cursor -> Maybe Int -> Window
 window r c s = ContentWindow r c s False
 
 hasFocus :: Window -> Bool
-hasFocus (ContentWindow _ _ _ f) = f
+hasFocus (ContentWindow {cwHasFocus = f}) = f
 hasFocus _ = False
 
 focus :: Window -> Window -> Window
@@ -61,12 +64,12 @@ l <|> (LayoutWindow Vertical r) = LayoutWindow Vertical (l:r)
 l <|> r = LayoutWindow Vertical [l, r]
 
 height defaultH (LayoutWindow Horizontal wins) = foldr ((+) . height defaultH) 0 wins
-height defaultH (LayoutWindow Vertical _) = defaultH
-height _ (ContentWindow _ _ h _) = max h 0
+height _ (ContentWindow _ _ (Just h) _) = max h 0
+height defaultH _ = defaultH
 
 width defaultW (LayoutWindow Vertical wins) = foldr ((+) . width defaultW) 0 wins
-width defaultW (LayoutWindow Horizontal _) = defaultW
-width _ (ContentWindow _ _ w _) = max w 0
+width _ (ContentWindow _ _ (Just w) _) = max w 0
+width defaultW _ = defaultW
 
 minHeight = height 0
 minWidth = width 0
@@ -75,8 +78,8 @@ resize :: Window -> (Int, Int) -> Window
 resize (LayoutWindow o wins) (width, height) = LayoutWindow o $ sizedWins dimension wins'
   where
     dimension = if o == Horizontal then height else width
-    getSize (LayoutWindow _ _) dim = if o == Horizontal then (width, dim) else (dim, height)
-    getSize (ContentWindow _ _ _ _) dim = (dim, dim)
+    getSize (LayoutWindow {}) dim = if o == Horizontal then (width, dim) else (dim, height)
+    getSize (ContentWindow {}) dim = (dim, dim)
     minSize = if o == Horizontal then minHeight else minWidth
     wins' = map getWinSize wins
     getWinSize w = (minSize w, w)
@@ -90,4 +93,4 @@ resize (LayoutWindow o wins) (width, height) = LayoutWindow o $ sizedWins dimens
         let resizeTo = if s <= 0 then defaultSize else s
             resizeTo' = if dimension < resizeTo then dimension else resizeTo
         in  (resize w $ getSize w resizeTo'):(sizedWins (dimension - resizeTo') wins')
-resize (ContentWindow r c _ f) (s, _) = ContentWindow r c s f
+resize (ContentWindow r c _ f) (s, _) = ContentWindow r c (Just s) f

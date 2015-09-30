@@ -3,6 +3,7 @@ module Main where
 import Control.Concurrent
 import Control.Concurrent.MVar
 import Control.Concurrent.STM.TChan (tryPeekTChan)
+import Control.Exception
 import Control.Monad
 import Control.Monad.Fix (fix)
 import Control.Monad.STM (atomically)
@@ -11,6 +12,7 @@ import GHC.Int (Int64)
 import Network.Socket hiding (shutdown)
 import System.Environment (getArgs)
 import System.IO
+import System.IO.Error
 import System.Posix.Signals as Sig
 
 import System.Log.Handler.Simple
@@ -18,7 +20,7 @@ import System.Log.Logger
 
 import Data.Aeson (encode)
 import Graphics.Vty
-import qualified Data.ByteString.Lazy.Char8 as B
+import qualified Data.Text as T
 import qualified Graphics.Vty.Picture as V
 
 import Ebitor.Edit
@@ -88,13 +90,11 @@ imageForWindow w = imageForWindow' Horizontal w
             resizeDimension = if o == Horizontal then resizeHeight else resizeWidth
         in  resizeDimension (maybe 0 id s) img
 
-    replaceTabs :: String -> String
-    replaceTabs = concatMap (\c -> if c == '\t' then spaces else [c])
-      where
-        spaces = replicate 8 ' '
+    replaceTabs :: T.Text -> T.Text
+    replaceTabs = T.replace "\t" (T.replicate 8 " ")
 
     imageForLine :: Rope -> Image
-    imageForLine = resizeHeight 1 . string defAttr . replaceTabs . R.unpack
+    imageForLine = resizeHeight 1 . text' defAttr . replaceTabs . R.unpackText
 
 handleResponse :: Response -> App -> IO ()
 handleResponse (Screen w) app = do
@@ -167,8 +167,13 @@ main = do
     -- Not working. Why?
     _ <- installHandler sigTSTP Sig.Default Nothing
 
-    runServerThread defaultSockAddr
-    sock <- getSocket
+    sock <- catch getSocket $ \e -> do
+        if isDoesNotExistError e then do
+            infoM loggerName "Running own server..."
+            runServerThread defaultSockAddr
+            getSocket
+        else
+            error "Error connecting to server"
 
     let app = App
              { term = vty

@@ -75,11 +75,10 @@ minHeight = height 0
 minWidth = width 0
 
 resize :: Window -> (Int, Int) -> Window
-resize (LayoutWindow o wins) (width, height) = LayoutWindow o $ sizedWins dimension wins'
+resize (LayoutWindow o wins) size@(width, height) = LayoutWindow o $ sizedWins dimension wins'
   where
-    dimension = if o == Horizontal then height else width
-    getSize (LayoutWindow {}) dim = if o == Horizontal then (width, dim) else (dim, height)
-    getSize (ContentWindow {}) dim = (dim, dim)
+    getDimension (w, h) = if o == Horizontal then h else w
+    dimension = getDimension size
     minSize = if o == Horizontal then minHeight else minWidth
     wins' = map getWinSize wins
     getWinSize w = (minSize w, w)
@@ -87,10 +86,23 @@ resize (LayoutWindow o wins) (width, height) = LayoutWindow o $ sizedWins dimens
     used = foldr ((+) . fst) 0 wins'
     leftover = dimension - used
     defaultSize = if numUnsized > 0 then max (leftover `quot` numUnsized) 0 else 0
+
     sizedWins _ [] = []
-    sizedWins dimension ((s, w):[]) = [resize w $ getSize w dimension]
+    sizedWins dimension ((s, w):[]) = [resize' w size]
     sizedWins dimension ((s, w):wins') =
         let resizeTo = if s <= 0 then defaultSize else s
             resizeTo' = if dimension < resizeTo then dimension else resizeTo
-        in  (resize w $ getSize w resizeTo'):(sizedWins (dimension - resizeTo') wins')
-resize (ContentWindow r c _ f) (s, _) = ContentWindow r c (Just s) f
+            size = if o == Horizontal then (width, resizeTo') else (resizeTo', height)
+        in  (resize' w size):(sizedWins (dimension - resizeTo') wins')
+
+    resize' (ContentWindow r c _ f) size =
+        let dimension = getDimension size
+            r' = truncateRope r size
+        in  ContentWindow r' c (Just dimension) f
+    resize' win size = resize win size
+resize w _ = undefined
+
+truncateRope :: R.Rope -> (Int, Int) -> R.Rope
+truncateRope r (width, height) = R.slice r 0 end
+  where
+    end = fst $ R.positionForCursor r (R.Cursor (height, width + 1))

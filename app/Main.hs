@@ -25,6 +25,7 @@ import Ebitor.Edit
 import Ebitor.Events.JSON (eventToString)
 import Ebitor.Rope (Rope)
 import Ebitor.Server
+import Ebitor.Utils
 import Ebitor.Window (Window(..), Orientation(..))
 import qualified Ebitor.Rope as R
 import qualified Ebitor.Rope.Cursor as R
@@ -34,6 +35,7 @@ import qualified Ebitor.Window as W
 data App = App
            { term :: Vty
            , serverSocket :: Socket
+           , isRunning :: IO Bool
            , quit :: IO ()
            }
 
@@ -80,11 +82,19 @@ imageForWindow w = imageForWindow' Horizontal w
     imageForWindow' _ (LayoutWindow o wins) =
         let cat = if o == Horizontal then vertCat else horizCat
         in  cat $ map (imageForWindow' o) wins
+
     imageForWindow' o (ContentWindow r curs@(R.Cursor (ln, col)) s f) =
-        let ropeLines = R.lines r
-            img = vertCat $ map (resizeHeight 1 . string defAttr . R.unpack) ropeLines
+        let img = vertCat $ map imageForLine $ R.lines r
             resizeDimension = if o == Horizontal then resizeHeight else resizeWidth
         in  resizeDimension (maybe 0 id s) img
+
+    replaceTabs :: String -> String
+    replaceTabs = concatMap (\c -> if c == '\t' then spaces else [c])
+      where
+        spaces = replicate 8 ' '
+
+    imageForLine :: Rope -> Image
+    imageForLine = resizeHeight 1 . string defAttr . replaceTabs . R.unpack
 
 handleResponse :: Response -> App -> IO ()
 handleResponse (Screen w) app = do
@@ -124,10 +134,30 @@ getSocket = do
     infoM loggerName "Connected to server"
     return sock
 
-whileRunning :: MVar () -> IO () -> IO ()
-whileRunning mvar f = fix $ \loop -> do
-    n <- isEmptyMVar mvar
-    when n (f >> loop)
+responseLoop :: App -> IO ()
+responseLoop app = whileRunning app $ do
+    infoM loggerName "Waiting for response..."
+    resp <- receiveResponse (serverSocket app)
+    debugM loggerName ("Response: " ++ show resp)
+    when (isJust resp) $ handleResponse (fromJust resp) app
+    return ()
+
+handleArgs :: App -> IO ()
+handleArgs app = do
+    args <- getArgs
+    case args of
+        [] -> return ()
+        [fname] -> sendCommand' $ EditFile fname
+        _ -> sendCommand' $ Echo (ErrorMessage "Invalid command-line arguments")
+  where
+    sendCommand' cmd = do
+        sendCommand (serverSocket app) cmd
+        return ()
+
+whileRunning :: App -> IO () -> IO ()
+whileRunning app f = fix $ \loop -> do
+    running <- isRunning app
+    when running (f >> loop)
 
 main = do
     setUpLogger
@@ -143,31 +173,19 @@ main = do
     let app = App
              { term = vty
              , serverSocket = sock
+             , isRunning = isEmptyMVar programStatus
              , quit = putMVar programStatus ()
              }
 
-    -- Thread to process responses
-    forkIO $ whileRunning programStatus $ do
-        infoM loggerName "Waiting for response..."
-        resp <- receiveResponse sock
-        infoM loggerName ("Response: " ++ show resp)
-        when (isJust resp) $ handleResponse (fromJust resp) app
-        return ()
-
+    forkIO $ responseLoop app
     -- Set initial display size
     displayBounds (outputIface vty) >>= sendCommand sock . UpdateDisplaySize
 
-    args <- getArgs
-    case args of
-        [] -> return 0
-        [fname] -> sendCommand sock $ EditFile fname
-        _ -> sendCommand sock $ Echo (ErrorMessage "Invalid command-line arguments")
-
+    handleArgs app
     -- Thread to process user events
-    forkIO $ whileRunning programStatus $ processEvent app
+    forkIO $ whileRunning app $ processEvent app
 
     -- Wait until we quit the program
     _ <- takeMVar programStatus
-
     shutdown vty
     close sock

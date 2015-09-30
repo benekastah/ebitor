@@ -43,12 +43,10 @@ import Ebitor.Command hiding (commander)
 import Ebitor.Edit
 import Ebitor.Events
 import Ebitor.Language
-import Ebitor.Utils
 import Ebitor.Window hiding (focus)
 import qualified Ebitor.Command as C
 import qualified Ebitor.Rope as R
 import qualified Ebitor.Rope.Cursor as R
-import qualified Ebitor.Rope.Regex as RR
 import qualified Ebitor.Window as W
 
 
@@ -145,12 +143,13 @@ mainLoop sock chan nr = do
 
 sendData :: Socket -> B.ByteString -> IO Int64
 sendData sock dat = do
-    debugM loggerName ("len: " ++ show len)
-    send sock $ B.append len compressedData
+    debugM loggerName ("sendData length: " ++ show len)
+    send sock $ B.append hexLen compressedData
   where
     compressedData = compress dat
-    len =
-        let hex = showHex (B.length compressedData) ""
+    len = B.length compressedData
+    hexLen =
+        let hex = showHex len ""
             padding = replicate (16 - length hex) '0'
         in  TL.encodeUtf8 (TL.pack $ padding ++ hex)
 
@@ -186,11 +185,9 @@ receiveCommand :: Socket -> IO (Maybe Command)
 receiveCommand = fmap decodeCommand . receiveData
 
 windowFromEditor :: Editor -> Maybe Int -> Window
-windowFromEditor e = window r' (snd $ position e)
+windowFromEditor e = window r (snd $ position e)
   where
     r = R.unlines $ drop (firstLine e - 1) (R.lines $ rope e)
-    reTab = fromRight $ RR.compileDefault ("\t" :: R.Rope)
-    r' = RR.replace reTab (R.pack $ replicate 8 ' ') r
 
 getScreen :: Session -> Maybe Message -> Response
 getScreen sess msg = Screen win
@@ -226,7 +223,7 @@ runConn (sock, _) chan nr = do
         cmd <- receiveCommand sock
         case cmd of
             Just cmd -> do
-                infoM loggerName ("Command: " ++ show cmd)
+                debugM loggerName ("Command: " ++ show cmd)
                 sess <- readIORef sessionRef >>= handleCommand cmd
                 let msg = lastMessage sess
                 writeIORef sessionRef $ sess { lastMessage = Nothing }
@@ -258,11 +255,9 @@ handleCommand Disconnect s = do
 handleCommand (Echo msg) s = return $ s { lastMessage = Just msg }
 handleCommand (SendKeys evs) s = keyHandler s evs s
 handleCommand (EditFile fname) s = do
-    debugM loggerName ("Trying to read file " ++ fname)
     result <- try $ R.readFile fname
     case result of
         Right r -> do
-            debugM loggerName ("Read file " ++ fname)
             let e = newEditor { filePath = Just fname, rope = r }
             return $ s { editor = e }
         Left e

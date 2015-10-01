@@ -19,3 +19,6 @@ eb-profile: build-profile
 
 eb-server: build
 	stack exec eb-server
+
+eb-server-profile: build-profile
+	stack exec eb-server-profile

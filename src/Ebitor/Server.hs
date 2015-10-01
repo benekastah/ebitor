@@ -1,4 +1,5 @@
 {-# LANGUAGE DeriveGeneric #-}
+{-# OPTIONS_GHC -fprof-auto #-}
 module Ebitor.Server
     ( Command(..)
     , Message(..)
@@ -204,7 +205,9 @@ getScreen sess msg = Screen win
     focusOn = case focus sess of
         FocusEditor -> editWindow
         FocusCommandEditor -> commandBar
-    win = W.resize (W.focus focusOn $ editWindow <-> statusBar) displaySize'
+    composedWin = editWindow <-> statusBar
+    focusedWin = W.focus focusOn composedWin
+    win = W.resize focusedWin displaySize'
 
 runConn :: (Socket, SockAddr) -> Chan Msg -> Int -> IO ()
 runConn (sock, _) chan nr = do

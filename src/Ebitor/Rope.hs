@@ -1,4 +1,5 @@
 {-# LANGUAGE MultiParamTypeClasses #-}
+{-# OPTIONS_GHC -fprof-auto #-}
 module Ebitor.Rope where
 
 import Control.Applicative (pure)
@@ -13,6 +14,7 @@ import Data.FingerTree hiding (empty, null)
 import Data.Text (Text)
 import qualified Data.FingerTree as F
 import qualified Data.Text as T
+import qualified Data.Text.IO as T
 
 import Ebitor.Rope.Cursor
 
@@ -47,10 +49,10 @@ instance FromJSON Rope where
     parseJSON = withText "String" $ pure . pack . T.unpack
 
 instance ToJSON Rope where
-    toJSON r = toJSON $ unpack r
+    toJSON r = toJSON $ unpackText r
 
 instance Eq Rope where
-    a /= b = unpack a /= unpack b
+    a /= b = unpackText a /= unpackText b
 
 countNL :: Text -> Int
 countNL = T.count "\n"
@@ -161,7 +163,7 @@ takeWhileEnd f = Rope . takeWhileEnd' . fromRope
                 F.singleton $ Chunk l' t'
 
 lines :: Rope -> [Rope]
-lines = map pack . Prelude.lines . unpack
+lines = map packText . T.lines . unpackText
 
 unlines :: [Rope] -> Rope
 unlines [] = empty
@@ -288,8 +290,8 @@ positionForCursor r target@(Cursor (l, c))
 -- File operations
 readFile :: FilePath -> IO Rope
 readFile f = do
-    s <- Prelude.readFile f
-    return $ pack s
+    t <- T.readFile f
+    return $ packText t
 
 writeFile :: FilePath -> Rope -> IO ()
-writeFile f = Prelude.writeFile f . unpack
+writeFile f = T.writeFile f . unpackText

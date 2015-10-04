@@ -41,6 +41,8 @@ data App = App
            , quit :: IO ()
            }
 
+type Window_ = Window (R.Position, R.Rope)
+
 
 loggerName = "Ebitor.Vty"
 
@@ -51,44 +53,28 @@ setUpLogger = do
     updateGlobalLogger loggerName (setHandlers [f] . setLevel DEBUG)
 
 
-setCursor :: Vty -> Window -> IO ()
+setCursor :: Vty -> Window_ -> IO ()
 setCursor vty w = do
     let out = outputIface vty
-    (fullWidth, fullHeight) <- displayBounds out
-    case getCursor Horizontal (-1, -1, fullWidth, fullHeight) w of
-        Just (ln, col) -> do
-            setCursorPos out col ln
-            showCursor out
-        Nothing -> hideCursor out
-  where
-    getCursor :: Orientation -> (Int, Int, Int, Int) -> Window -> Maybe (Int, Int)
-    getCursor _ offset (LayoutWindow o wins) =
-        let advanceOffset (offsetLn, offsetCol, width, height) w = if o == Horizontal then
-                (offsetLn + W.height height w, offsetCol, width, height)
-            else
-                (offsetLn, offsetCol + W.width width w, width, height)
-            getCursor' _ [] = Nothing
-            getCursor' offset (w:wins) = case getCursor o offset w of
-                Nothing -> getCursor' (advanceOffset offset w) wins
-                curs -> curs
-        in  getCursor' offset wins
-    getCursor _ (offsetLn, offsetCol, _, _) (ContentWindow _ (R.Cursor (ln, col)) _ f) =
-        let vtyLn = offsetLn + ln
-            vtyCol = offsetCol + col
-        in  if f then Just (vtyLn, vtyCol) else Nothing
+        focused = W.getFocusedWindow w
+        rect = fromJust $ W.cwRect focused
+        R.Cursor (ln, col) = snd . fst $ W.cwContent focused
+    setCursorPos out (col - 1 + W.rectX rect) (ln - 1 + W.rectY rect)
+    showCursor out
 
-imageForWindow :: Window -> Image
-imageForWindow w = imageForWindow' Horizontal w
+imageForWindow :: Window_ -> Image
+imageForWindow w = imageForWindow' w
   where
-    imageForWindow' :: Orientation -> Window -> Image
-    imageForWindow' _ (LayoutWindow o wins) =
+    imageForWindow' :: Window_ -> Image
+    imageForWindow' (LayoutWindow o wins _) =
         let cat = if o == Horizontal then vertCat else horizCat
-        in  cat $ map (imageForWindow' o) wins
+        in  cat $ map imageForWindow' wins
 
-    imageForWindow' o (ContentWindow r curs@(R.Cursor (ln, col)) s f) =
-        let img = vertCat $ map imageForLine $ R.lines r
-            resizeDimension = if o == Horizontal then resizeHeight else resizeWidth
-        in  resizeDimension (maybe 0 id s) img
+    imageForWindow' w =
+        let ((_, R.Cursor (ln, col)), r) = cwContent w
+            img = vertCat $ map imageForLine $ R.lines r
+            rect = fromJust $ cwRect w
+        in  resizeWidth (W.rectWidth rect) $ resizeHeight (W.rectHeight rect) img
 
     replaceTabs :: T.Text -> T.Text
     replaceTabs = T.replace "\t" (T.replicate 8 " ")
@@ -99,9 +85,8 @@ imageForWindow w = imageForWindow' Horizontal w
 handleResponse :: Response -> App -> IO ()
 handleResponse (Screen w) app = do
     bounds <- displayBounds $ outputIface vty
-    let w' = W.resize w bounds
-    update vty $ picForImage $ imageForWindow w'
-    setCursor vty w'
+    update vty $ picForImage $ imageForWindow w
+    setCursor vty w
   where
     vty = term app
 handleResponse Disconnected app = quit app

@@ -20,6 +20,7 @@ import Control.Exception
 import Control.Monad
 import Control.Monad.Fix (fix)
 import Data.IORef
+import Data.List (find)
 import Data.Maybe
 import GHC.Generics
 import GHC.Int (Int64)
@@ -44,7 +45,7 @@ import Ebitor.Command hiding (commander)
 import Ebitor.Edit
 import Ebitor.Events
 import Ebitor.Language
-import Ebitor.Window hiding (focus)
+import Ebitor.Window hiding (focus, map)
 import qualified Ebitor.Command as C
 import qualified Ebitor.Rope as R
 import qualified Ebitor.Rope.Cursor as R
@@ -54,7 +55,7 @@ import qualified Ebitor.Window as W
 type Msg = (Int, B.ByteString)
 
 
-data Response = Screen Window
+data Response = Screen (Window (R.Position, R.Rope))
               | Disconnected
               | InvalidCommand
               deriving (Generic, Show)
@@ -65,11 +66,11 @@ encodeResponse = encode
 decodeResponse :: B.ByteString -> Maybe Response
 decodeResponse = decode
 
-data Focus = FocusEditor | FocusCommandEditor deriving (Show, Eq)
+data Focus = FocusEditors | FocusCommandEditor deriving (Show, Eq)
 
 type KeyHandler = [Event] -> Session -> IO Session
 data Session = Session
-               { editor :: Editor
+               { editors :: Window Editor
                , commandEditor :: Editor
                , focus :: Focus
                , commander :: Commander
@@ -80,18 +81,20 @@ data Session = Session
                }
 
 newSession :: Socket -> Session
-newSession sock = Session { editor = newEditor
+newSession sock = Session { editors = W.focus win win
                           , commandEditor = newEditor
-                          , focus = FocusEditor
+                          , focus = FocusEditors
                           , commander = C.commander
                           , keyHandler = normalMode
                           , clientSocket = sock
                           , lastMessage = Nothing
                           , displaySize = (0, 0)
                           }
+  where
+    win = window newEditor Nothing
 
 updateEditor :: (Editor -> Editor) -> Session -> Session
-updateEditor f s = s { editor = f (editor s) }
+updateEditor f s = s { editors = W.updateFocused f (editors s) }
 
 updateCommandEditor :: (Editor -> Editor) -> Session -> Session
 updateCommandEditor f s = s { commandEditor = f (commandEditor s) }
@@ -185,29 +188,31 @@ receiveResponse = fmap decodeResponse . receiveData
 receiveCommand :: Socket -> IO (Maybe Command)
 receiveCommand = fmap decodeCommand . receiveData
 
-windowFromEditor :: Editor -> Maybe Int -> Window
-windowFromEditor e = window r (snd $ position e)
+getEditorDisplay :: Window Editor -> Window (R.Position, R.Rope)
+getEditorDisplay w@(ContentWindow { cwContent = e, cwRect = Just rect }) =
+    w { cwContent = (position e, R.slice r 0 end) }
   where
     r = R.unlines $ drop (firstLine e - 1) (R.lines $ rope e)
+    end = fst $ R.positionForCursor r (R.Cursor (rectHeight rect, rectWidth rect + 1))
 
 getScreen :: Session -> Maybe Message -> Response
 getScreen sess msg = Screen win
   where
-    displaySize' = displaySize sess
-    editWindow = windowFromEditor (editor sess) Nothing
-    commandBar = windowFromEditor (commandEditor sess) (Just 1)
+    (w, h) = displaySize sess
+    displayRect = W.Rect 0 0 w h
+    commandBar = window (commandEditor sess) (Just 1)
     statusBar =
-        let windowFromText t = window (R.pack $ T.unpack t) R.newCursor (Just 1)
+        let editor t = newEditor { rope = R.packText t }
+            windowFromText t = window (editor t) (Just 1)
         in  case msg of
             Just (Message m) -> windowFromText m
             Just (ErrorMessage m) -> windowFromText m
             Nothing -> commandBar
-    focusOn = case focus sess of
-        FocusEditor -> editWindow
-        FocusCommandEditor -> commandBar
-    composedWin = editWindow <-> statusBar
-    focusedWin = W.focus focusOn composedWin
-    win = W.resize focusedWin displaySize'
+    composedWin = editors sess <-> statusBar
+    focusedWin = case focus sess of
+        FocusCommandEditor -> W.focus commandBar composedWin
+        _ -> composedWin
+    win = W.mapWindow getEditorDisplay (W.setRect focusedWin displayRect)
 
 runConn :: (Socket, SockAddr) -> Chan Msg -> Int -> IO ()
 runConn (sock, _) chan nr = do
@@ -262,28 +267,51 @@ handleCommand (EditFile fname) s = do
     case result of
         Right r -> do
             let e = newEditor { filePath = Just fname, rope = r }
-            return $ s { editor = e }
+            return $ s { editors = W.updateFocused (const e) (editors s) }
         Left e
             | isDoesNotExistError e ->
-                return $ s { editor = (editor s) { filePath = Just fname } }
+                let updateFname e = e { filePath = Just fname }
+                in  return $ s { editors = W.updateFocused updateFname (editors s) }
             | otherwise -> errorMessage $ getIOErrorMessage e $ T.pack fname
   where
     errorMessage msg = return $ s { lastMessage = Just $ ErrorMessage msg }
 handleCommand (WriteFile Nothing) s = do
-    case filePath $ editor s of
+    let e = getFocused (editors s)
+    case (filePath e) of
         Just fname -> handleCommand (WriteFile $ Just fname) s
         Nothing -> return $ s { lastMessage = Just $ ErrorMessage "No file name" }
 handleCommand (WriteFile (Just fname)) s = do
-    let e = editor s
-    R.writeFile fname $ rope e
-    return $ s { editor = e { filePath = Just fname } }
+    R.writeFile fname $ rope (getFocused $ editors s)
+    return $ s { editors = updateFocused updateFname (editors s) }
+  where
+    updateFname e = e { filePath = Just fname }
 handleCommand (UpdateDisplaySize size) s = return s { displaySize = size }
+handleCommand (SplitWindow o fname) s =
+    let editors' = W.focus newWin (head $ doSplit Nothing [editors s])
+        s' = s { editors = editors' }
+    in  case fname of
+        Just f -> handleCommand (EditFile f) s'
+        Nothing -> return s'
+  where
+    join = if o == W.Horizontal then (W.<->) else (W.<|>)
+    newWin = window newEditor Nothing
+
+    doSplit _ (w@(LayoutWindow {}):xs) =
+        (w { lwWindows = doSplit (Just w) (lwWindows w) }):xs
+    doSplit (Just parent) (w@(ContentWindow {cwHasFocus = True}):xs) =
+        if o == lwOrientation parent then w:newWin:xs else (w `join` newWin):xs
+    doSplit Nothing (w@(ContentWindow {cwHasFocus = True}):xs) = (w `join` newWin):xs
+    doSplit _ xs = xs
 
 normalMode :: KeyHandler
 normalMode [EvKey (KChar 'h') []] = return . updateEditor cursorLeft
 normalMode [EvKey (KChar 'j') []] = return . updateEditor cursorDown
 normalMode [EvKey (KChar 'k') []] = return . updateEditor cursorUp
 normalMode [EvKey (KChar 'l') []] = return . updateEditor cursorRight
+normalMode [EvKey (KChar 'h') [MCtrl]] = \s ->
+    return $ s { editors = W.focusPrev (editors s) }
+normalMode [EvKey (KChar 'l') [MCtrl]] = \s ->
+    return $ s { editors = W.focusNext (editors s) }
 normalMode [EvKey (KChar 'i') []] = \s -> return $ toInsertMode s
 normalMode [EvKey (KChar ':') []] = \s -> return $ toCommandMode s
 normalMode _ = return
@@ -321,10 +349,10 @@ commandMode [EvKey KEsc []] s = return $ cancelCommandMode s
 commandMode keys s = baseInsertMode updateCommandEditor keys s
 
 toInsertMode :: Session -> Session
-toInsertMode s = s { keyHandler = insertMode, focus = FocusEditor }
+toInsertMode s = s { keyHandler = insertMode, focus = FocusEditors }
 
 toNormalMode :: Session -> Session
-toNormalMode s = s { keyHandler = normalMode, focus = FocusEditor }
+toNormalMode s = s { keyHandler = normalMode, focus = FocusEditors }
 
 toCommandMode :: Session -> Session
 toCommandMode s = s { keyHandler = commandMode, focus = FocusCommandEditor }

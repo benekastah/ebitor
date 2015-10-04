@@ -28,19 +28,21 @@ import qualified Data.ByteString.Lazy as B
 import Ebitor.Command.Parser
 import Ebitor.Events.JSON
 import Ebitor.Language
+import qualified Ebitor.Window as W
 
 data Message = Message T.Text | ErrorMessage T.Text
              deriving (Generic, Show)
 instance FromJSON Message
 instance ToJSON Message
 
-data Command = SendKeys [Event]
-             | EditFile FilePath
-             | WriteFile (Maybe FilePath)
-             | Echo Message
+data Command = CommandSequence [Command]
              | Disconnect
-             | CommandSequence [Command]
+             | Echo Message
+             | EditFile FilePath
+             | SendKeys [Event]
+             | SplitWindow W.Orientation (Maybe FilePath)
              | UpdateDisplaySize (Int, Int)
+             | WriteFile (Maybe FilePath)
              deriving (Generic, Show)
 instance FromJSON Command
 instance ToJSON Command
@@ -124,6 +126,8 @@ commander = Commander { actionMap = cmds
            , ("edit", edit)
            , ("quit", quit)
            , ("send-keys", sendKeys)
+           , ("split", split W.Horizontal)
+           , ("vsplit", split W.Vertical)
            , ("w", write)
            , ("wq", writeQuit)
            , ("write", write)
@@ -162,3 +166,8 @@ commander = Commander { actionMap = cmds
     echoErr :: Action
     echoErr [CmdString msg] = Right $ Echo $ ErrorMessage msg
     echoErr _ = arityError
+
+    split :: W.Orientation -> Action
+    split o [CmdString msg] = Right $ SplitWindow o (Just $ T.unpack msg)
+    split o [] = Right $ SplitWindow o Nothing
+    split _ _  = arityError

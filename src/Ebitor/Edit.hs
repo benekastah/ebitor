@@ -28,7 +28,7 @@ data Editor = Editor
     , position :: Position
     , firstLine :: Int
     }
-    deriving (Generic, Show)
+    deriving (Generic, Show, Eq)
 
 instance FromJSON Editor
 instance ToJSON Editor

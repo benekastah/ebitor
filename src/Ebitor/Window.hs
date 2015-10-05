@@ -127,9 +127,13 @@ setRect w@(LayoutWindow o wins _) rect =
         rect { rectWidth = s }
 
     sizedWins _ [] = []
+    sizedWins childRect ((s, w):[]) =
+        let resizeTo = dimension - getRectPos childRect
+            childRect' = setRectSize childRect resizeTo
+        in  [setRect w childRect']
     sizedWins childRect ((s, w):wins') =
-        let resizeTo = min (if s <= 0 then defaultSize else s)
-                           (dimension - (getRectPos childRect))
+        let remainder = dimension - getRectPos childRect
+            resizeTo = min (if s <= 0 then defaultSize else s) remainder
             childRect' = setRectSize childRect resizeTo
             nextChildRect = setRectPos childRect' (getRectPos childRect' + resizeTo)
         in  (setRect w childRect'):(sizedWins nextChildRect wins')

@@ -44,6 +44,7 @@ import qualified Text.Regex.TDFA as Regex
 import Ebitor.Command hiding (commander)
 import Ebitor.Edit
 import Ebitor.Events
+import Ebitor.Events.JSON (eventsToString)
 import Ebitor.Language
 import Ebitor.Window hiding (focus, map)
 import qualified Ebitor.Command as C
@@ -74,6 +75,7 @@ data Session = Session
                , commandEditor :: Editor
                , focus :: Focus
                , commander :: Commander
+               , keyBuffer :: [Event]
                , keyHandler :: KeyHandler
                , clientSocket :: Socket
                , lastMessage :: Maybe Message
@@ -85,6 +87,7 @@ newSession sock = Session { editors = W.focus win win
                           , commandEditor = newEditor
                           , focus = FocusEditors
                           , commander = C.commander
+                          , keyBuffer = []
                           , keyHandler = normalMode
                           , clientSocket = sock
                           , lastMessage = Nothing
@@ -98,6 +101,14 @@ updateEditor f s = s { editors = W.updateFocused f (editors s) }
 
 updateCommandEditor :: (Editor -> Editor) -> Session -> Session
 updateCommandEditor f s = s { commandEditor = f (commandEditor s) }
+
+appendKeyBuffers :: [Event] -> [Event] -> [Event]
+appendKeyBuffers a b = trimLength maxLen $ a ++ b
+  where
+    maxLen = 10
+    trimLength l ls
+        | length ls > l = []
+        | otherwise = ls
 
 defaultSockAddr = SockAddrInet 6879 iNADDR_ANY
 
@@ -195,19 +206,25 @@ getEditorDisplay w@(ContentWindow { cwContent = e, cwRect = Just rect }) =
     r = R.unlines $ drop (firstLine e - 1) (R.lines $ rope e)
     end = fst $ R.positionForCursor r (R.Cursor (rectHeight rect, rectWidth rect + 1))
 
+getStatusBar :: Session -> Window Editor
+getStatusBar sess = case lastMessage sess of
+    Just (Message m) -> windowFromText m
+    Just (ErrorMessage m) -> windowFromText m
+    Nothing -> windowFromText $ T.pack $ eventsToString (keyBuffer sess)
+  where
+    editor t = newEditor { rope = R.packText t }
+    windowFromText t = window (editor t) (Just 1)
+
+
 getScreen :: Session -> Maybe Message -> Response
 getScreen sess msg = Screen win
   where
     (w, h) = displaySize sess
     displayRect = W.Rect 0 0 w h
     commandBar = window (commandEditor sess) (Just 1)
-    statusBar =
-        let editor t = newEditor { rope = R.packText t }
-            windowFromText t = window (editor t) (Just 1)
-        in  case msg of
-            Just (Message m) -> windowFromText m
-            Just (ErrorMessage m) -> windowFromText m
-            Nothing -> commandBar
+    statusBar = case focus sess of
+        FocusCommandEditor -> commandBar
+        _ -> getStatusBar sess
     composedWin = editors sess <-> statusBar
     focusedWin = case focus sess of
         FocusCommandEditor -> W.focus commandBar composedWin
@@ -235,7 +252,7 @@ runConn (sock, _) chan nr = do
                 sess <- readIORef sessionRef >>= handleCommand cmd
                 let msg = lastMessage sess
                 writeIORef sessionRef $ sess { lastMessage = Nothing }
-                let screen = getScreen sess (lastMessage sess)
+                let screen = getScreen sess msg
                 sendResponse' sock screen
             Nothing -> sendResponse' sock InvalidCommand
         loop
@@ -261,7 +278,11 @@ handleCommand Disconnect s = do
     close sock
     return s
 handleCommand (Echo msg) s = return $ s { lastMessage = Just msg }
-handleCommand (SendKeys evs) s = keyHandler s evs s
+handleCommand (SendKeys evs) s = do
+    let keyBuf = appendKeyBuffers (keyBuffer s) evs
+        s' = s { keyBuffer = keyBuf }
+    debugM loggerName ("Key buffer: " ++ eventsToString keyBuf)
+    keyHandler s' keyBuf s'
 handleCommand (EditFile fname) s = do
     result <- try $ R.readFile fname
     case result of
@@ -303,24 +324,34 @@ handleCommand (SplitWindow o fname) s =
     doSplit Nothing (w@(ContentWindow {cwHasFocus = True}):xs) = (w `join` newWin):xs
     doSplit _ xs = xs
 
+returnClear :: Session -> IO Session
+returnClear = return . clearKeyBuffer
+
 normalMode :: KeyHandler
-normalMode [EvKey (KChar 'h') []] = return . updateEditor cursorLeft
-normalMode [EvKey (KChar 'j') []] = return . updateEditor cursorDown
-normalMode [EvKey (KChar 'k') []] = return . updateEditor cursorUp
-normalMode [EvKey (KChar 'l') []] = return . updateEditor cursorRight
-normalMode [EvKey (KChar 'h') [MCtrl]] = \s ->
-    return $ s { editors = W.focusPrev (editors s) }
-normalMode [EvKey (KChar 'l') [MCtrl]] = \s ->
-    return $ s { editors = W.focusNext (editors s) }
-normalMode [EvKey (KChar 'i') []] = \s -> return $ toInsertMode s
-normalMode [EvKey (KChar ':') []] = \s -> return $ toCommandMode s
-normalMode _ = return
+normalMode [EvKey (KChar 'h') []] = returnClear . updateEditor cursorLeft
+normalMode [EvKey (KChar 'j') []] = returnClear . updateEditor cursorDown
+normalMode [EvKey (KChar 'k') []] = returnClear . updateEditor cursorUp
+normalMode [EvKey (KChar 'l') []] = returnClear . updateEditor cursorRight
+normalMode [EvKey (KChar 'w') [MCtrl], EvKey (KChar 'h') mods]
+    | mods == [MCtrl] || mods == [] = \s ->
+        returnClear $ s { editors = W.focusPrev (editors s) }
+normalMode [EvKey (KChar 'w') [MCtrl], EvKey key []]
+    | key == KChar 'h' || key == KBS = \s ->
+        returnClear $ s { editors = W.focusPrev (editors s) }
+normalMode [EvKey (KChar 'w') [MCtrl], EvKey (KChar 'l') mods]
+    | mods == [MCtrl] || mods == [] = \s ->
+        returnClear $ s { editors = W.focusNext (editors s) }
+normalMode [EvKey (KChar 'i') []] = \s -> returnClear $ toInsertMode s
+normalMode [EvKey (KChar ':') []] = \s -> returnClear $ toCommandMode s
+normalMode buf
+    | not (null buf) && last buf == EvKey KEsc [] = returnClear
+    | otherwise = return
 
 baseInsertMode :: ((Editor -> Editor) -> Session -> Session) -> KeyHandler
-baseInsertMode _ [EvKey KEsc []] = \s -> return $ toNormalMode s
-baseInsertMode update [EvKey (KChar c) []] = return . update (insertChar c)
-baseInsertMode update [EvKey KEnter []] = return . update insertNewline
-baseInsertMode update [EvKey KBS []] = return . update backspace
+baseInsertMode _ [EvKey KEsc []] = \s -> returnClear $ toNormalMode s
+baseInsertMode update [EvKey (KChar c) []] = returnClear . update (insertChar c)
+baseInsertMode update [EvKey KEnter []] = returnClear . update insertNewline
+baseInsertMode update [EvKey KBS []] = returnClear . update backspace
 baseInsertMode _ _ = return
 
 insertMode :: KeyHandler
@@ -334,8 +365,8 @@ commandMode [EvKey KEnter []] s =
     case cmd of
         Right cmd' -> do
             infoM loggerName ("Parsed command: " ++ show cmd')
-            handleCommand cmd' $ s'
-        Left e -> return $ s' { lastMessage = Just $ ErrorMessage e }
+            returnClear s' >>= handleCommand cmd'
+        Left e -> returnClear $ s' { lastMessage = Just $ ErrorMessage e }
   where
     s' = cancelCommandMode s
     parseCmd :: R.Rope -> Either T.Text CmdSyntaxNode
@@ -345,14 +376,20 @@ commandMode [EvKey KEnter []] s =
 
     cmd :: Either T.Text Command
     cmd = parseCmd (rope $ commandEditor s) >>= getServerCommand (commander s)
-commandMode [EvKey KEsc []] s = return $ cancelCommandMode s
+commandMode [EvKey KEsc []] s = returnClear $ cancelCommandMode s
 commandMode keys s = baseInsertMode updateCommandEditor keys s
 
+clearKeyBuffer :: Session -> Session
+clearKeyBuffer s = s { keyBuffer = [] }
+
+changeKeyHandler :: Session -> KeyHandler -> Session
+changeKeyHandler s h = (clearKeyBuffer s) { keyHandler = h }
+
 toInsertMode :: Session -> Session
-toInsertMode s = s { keyHandler = insertMode, focus = FocusEditors }
+toInsertMode s = (changeKeyHandler s insertMode) { focus = FocusEditors }
 
 toNormalMode :: Session -> Session
-toNormalMode s = s { keyHandler = normalMode, focus = FocusEditors }
+toNormalMode s = (changeKeyHandler s normalMode) { focus = FocusEditors }
 
 toCommandMode :: Session -> Session
-toCommandMode s = s { keyHandler = commandMode, focus = FocusCommandEditor }
+toCommandMode s = (changeKeyHandler s commandMode) { focus = FocusCommandEditor }

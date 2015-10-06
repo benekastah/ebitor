@@ -74,7 +74,9 @@ imageForWindow w = imageForWindow' w
         let ((_, R.Cursor (ln, col)), r) = cwContent w
             img = vertCat $ map imageForLine $ R.lines r
             rect = fromJust $ cwRect w
-        in  resizeWidth (W.rectWidth rect) $ resizeHeight (W.rectHeight rect) img
+            resizeWidth' w = if w >= 0 then resizeWidth w else id
+            resizeHeight' h = if h >= 0 then resizeHeight h else id
+        in  resizeWidth' (W.rectWidth rect) $ resizeHeight' (W.rectHeight rect) img
 
     replaceTabs :: T.Text -> T.Text
     replaceTabs = T.replace "\t" (T.replicate 8 " ")

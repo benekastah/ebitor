@@ -22,6 +22,7 @@ module Ebitor.Window
     , window
     ) where
 
+import Data.List (intercalate)
 import Data.Maybe
 import GHC.Generics
 
@@ -33,9 +34,14 @@ instance FromJSON Orientation
 instance ToJSON Orientation
 
 data Rect = Rect { rectX :: Int, rectY :: Int, rectWidth :: Int, rectHeight :: Int }
-          deriving (Generic, Show, Eq)
+          deriving (Generic, Eq)
 instance FromJSON Rect
 instance ToJSON Rect
+
+instance Show Rect where
+    show r = intercalate " " ("Rect":coords)
+      where
+        coords = Prelude.map (\f -> show $ f r) [rectX, rectY, rectWidth, rectHeight]
 
 data Window a = ContentWindow { cwContent :: a
                               , cwSize :: Maybe Int
@@ -46,9 +52,19 @@ data Window a = ContentWindow { cwContent :: a
                              , lwWindows :: [Window a]
                              , lwRect :: Maybe Rect
                              }
-              deriving (Generic, Show, Eq)
+              deriving (Generic, Eq)
 instance FromJSON a => FromJSON (Window a)
 instance ToJSON a => ToJSON (Window a)
+
+instance Show (Window a) where
+    show w@(LayoutWindow {}) = intercalate " " [ "LayoutWindow"
+                                               , show $ lwOrientation w
+                                               , show $ lwWindows w
+                                               , show $ lwRect w
+                                               ]
+    show w@(ContentWindow {}) =
+        let s = intercalate " " ["ContentWindow", show $ cwRect w]
+        in  if cwHasFocus w then "{*" ++ s ++ "*}" else s
 
 window :: a -> Maybe Int -> Window a
 window r s = ContentWindow r s Nothing False
@@ -223,4 +239,5 @@ focusNext w =
     findNext (Just prev) (w@(ContentWindow {}):xs)
         | hasFocus prev = Just w
         | otherwise = findNext (Just w) xs
+    findNext Nothing (w@(ContentWindow {}):xs) = findNext (Just w) xs
     findNext _ _ = Nothing

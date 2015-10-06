@@ -118,3 +118,57 @@ test_setRect6 = assertEqual expected result
                             ]
                             (Just (Rect 0 0 4 10))
     result = W.setRect (winA <|> winB') (Rect 0 0 4 10)
+
+
+test_focusPrevFirst = assertEqual expected result
+  where
+    base = focus winA $ hozLayout [ winA, winB ]
+    expected = focus winB base
+    result = focusPrev base
+test_focusPrev = assertEqual expected result
+  where
+    base = focus winB $ hozLayout [ winA, winB ]
+    expected = focus winA base
+    result = focusPrev base
+test_focusPrevAcrossBounds1 = assertEqual expected result
+  where
+    base = focus winB $ vertLayout [ hozLayout [winA], hozLayout [winB] ]
+    expected = focus winA base
+    result = focusPrev base
+test_focusPrevAcrossBounds2 = assertEqual expected result
+  where
+    base = focus winB $ vertLayout [ winA, hozLayout [winB] ]
+    expected = focus winA base
+    result = focusPrev base
+test_focusPrevAcrossBounds3 = assertEqual expected result
+  where
+    base = focus winB $ vertLayout [ hozLayout [winA], winB ]
+    expected = focus winA base
+    result = focusPrev base
+
+
+test_focusNextLast = assertEqual expected result
+  where
+    base = focus winB $ hozLayout [ winA, winB ]
+    expected = focus winA base
+    result = focusNext base
+test_focusNext = assertEqual expected result
+  where
+    base = focus winA $ hozLayout [ winA, winB ]
+    expected = focus winB base
+    result = focusNext base
+test_focusNextAcrossBounds1 = assertEqual expected result
+  where
+    base = focus winA $ vertLayout [ hozLayout [winA], hozLayout [winB] ]
+    expected = focus winB base
+    result = focusNext base
+test_focusNextAcrossBounds2 = assertEqual expected result
+  where
+    base = focus winA $ vertLayout [ winA, hozLayout [winB] ]
+    expected = focus winB base
+    result = focusNext base
+test_focusNextAcrossBounds3 = assertEqual expected result
+  where
+    base = focus winA $ vertLayout [ hozLayout [winA], winB ]
+    expected = focus winB base
+    result = focusNext base

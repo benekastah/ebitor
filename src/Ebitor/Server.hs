@@ -199,6 +199,7 @@ receiveResponse = fmap decodeResponse . receiveData
 receiveCommand :: Socket -> IO (Maybe Command)
 receiveCommand = fmap decodeCommand . receiveData
 
+
 getEditorDisplay :: Window Editor -> Window (R.Position, R.Rope)
 getEditorDisplay w@(ContentWindow { cwContent = e, cwRect = Just rect }) =
     w { cwContent = (position e, R.slice r 0 end) }
@@ -207,14 +208,16 @@ getEditorDisplay w@(ContentWindow { cwContent = e, cwRect = Just rect }) =
     end = fst $ R.positionForCursor r (R.Cursor (rectHeight rect, rectWidth rect + 1))
 
 getStatusBar :: Session -> Window Editor
-getStatusBar sess = case lastMessage sess of
-    Just (Message m) -> windowFromText m
-    Just (ErrorMessage m) -> windowFromText m
-    Nothing -> windowFromText $ T.pack $ eventsToString (keyBuffer sess)
+getStatusBar sess = W.setSize (left <|> right) (Just 1)
   where
     editor t = newEditor { rope = R.packText t }
-    windowFromText t = window (editor t) (Just 1)
-
+    windowFromText t = window (editor t) Nothing
+    keys = eventsToString (keyBuffer sess)
+    right = W.setSize (windowFromText $ T.pack keys) (Just $ length keys + 1)
+    left = case lastMessage sess of
+        Just (Message m) -> windowFromText m
+        Just (ErrorMessage m) -> windowFromText m
+        Nothing -> windowFromText ""
 
 getScreen :: Session -> Maybe Message -> Response
 getScreen sess msg = Screen win
@@ -230,6 +233,7 @@ getScreen sess msg = Screen win
         FocusCommandEditor -> W.focus commandBar composedWin
         _ -> composedWin
     win = W.mapWindow getEditorDisplay (W.setRect focusedWin displayRect)
+
 
 runConn :: (Socket, SockAddr) -> Chan Msg -> Int -> IO ()
 runConn (sock, _) chan nr = do
@@ -307,22 +311,12 @@ handleCommand (WriteFile (Just fname)) s = do
   where
     updateFname e = e { filePath = Just fname }
 handleCommand (UpdateDisplaySize size) s = return s { displaySize = size }
-handleCommand (SplitWindow o fname) s =
-    let editors' = W.focus newWin (head $ doSplit Nothing [editors s])
+handleCommand (SplitWindow o fname) s = do
+    let editors' = W.splitFocusedWindow o (editors s) (window newEditor Nothing)
         s' = s { editors = editors' }
-    in  case fname of
+    case fname of
         Just f -> handleCommand (EditFile f) s'
         Nothing -> return s'
-  where
-    join = if o == W.Horizontal then (W.<->) else (W.<|>)
-    newWin = window newEditor Nothing
-
-    doSplit _ (w@(LayoutWindow {}):xs) =
-        (w { lwWindows = doSplit (Just w) (lwWindows w) }):xs
-    doSplit (Just parent) (w@(ContentWindow {cwHasFocus = True}):xs) =
-        if o == lwOrientation parent then w:newWin:xs else (w `join` newWin):xs
-    doSplit Nothing (w@(ContentWindow {cwHasFocus = True}):xs) = (w `join` newWin):xs
-    doSplit _ xs = xs
 
 returnClear :: Session -> IO Session
 returnClear = return . clearKeyBuffer

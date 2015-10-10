@@ -66,7 +66,7 @@ imageForWindow :: Window_ -> Image
 imageForWindow w = imageForWindow' w
   where
     imageForWindow' :: Window_ -> Image
-    imageForWindow' (LayoutWindow o wins _) =
+    imageForWindow' (LayoutWindow o wins _ _) =
         let cat = if o == Horizontal then vertCat else horizCat
         in  cat $ map imageForWindow' wins
 

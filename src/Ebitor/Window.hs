@@ -16,7 +16,11 @@ module Ebitor.Window
     , hasFocus
     , height
     , mapWindow
+    , rect
     , setRect
+    , setSize
+    , size
+    , splitFocusedWindow
     , updateFocused
     , width
     , window
@@ -50,6 +54,7 @@ data Window a = ContentWindow { cwContent :: a
                               }
               | LayoutWindow { lwOrientation :: Orientation
                              , lwWindows :: [Window a]
+                             , lwSize :: Maybe Int
                              , lwRect :: Maybe Rect
                              }
               deriving (Generic, Eq)
@@ -73,46 +78,65 @@ hasFocus :: Window a -> Bool
 hasFocus (ContentWindow {cwHasFocus = f}) = f
 hasFocus _ = False
 
+size :: Window a -> Maybe Int
+size (LayoutWindow { lwSize = s }) = s
+size (ContentWindow { cwSize = s }) = s
+
+setSize :: Window a -> Maybe Int -> Window a
+setSize w@(LayoutWindow {}) s = w { lwSize = s }
+setSize w@(ContentWindow {}) s = w { cwSize = s }
+
 rect :: Window a -> Maybe Rect
 rect (LayoutWindow { lwRect = s }) = s
 rect (ContentWindow { cwRect = s }) = s
 
 focus :: Eq a => Window a -> Window a -> Window a
-focus q w@(LayoutWindow o wins s)
+focus q w@(LayoutWindow { lwOrientation = o, lwWindows = wins })
     | q == w && length wins > 0 = focus (head wins) w
     | otherwise = w { lwWindows = (Prelude.map (focus q) wins) }
 focus q w@(ContentWindow {}) = w { cwHasFocus = q == w }
 
 infixr 7 <->
 (<->) :: Window a -> Window a -> Window a
-w@(LayoutWindow Horizontal l _) <-> (LayoutWindow Horizontal r _) =
+w@(LayoutWindow Horizontal l _ _) <-> (LayoutWindow Horizontal r _ _) =
     unsize $ w { lwWindows = l ++ r }
-w@(LayoutWindow Horizontal l _) <-> r = unsize $ w { lwWindows = l ++ [r] }
-l <-> w@(LayoutWindow Horizontal r _) = unsize $ w { lwWindows = (l:r) }
-l <-> r = unsize $ LayoutWindow Horizontal [l, r] Nothing
+w@(LayoutWindow Horizontal l _ _) <-> r = unsize $ w { lwWindows = l ++ [r] }
+l <-> w@(LayoutWindow Horizontal r _ _) = unsize $ w { lwWindows = (l:r) }
+l <-> r = unsize $ LayoutWindow Horizontal [l, r] Nothing Nothing
 
 infixr 7 <|>
 (<|>) :: Window a -> Window a -> Window a
-w@(LayoutWindow Vertical l _) <|> (LayoutWindow Vertical r _) =
+w@(LayoutWindow Vertical l _ _) <|> (LayoutWindow Vertical r _ _) =
     unsize $ w { lwWindows = l ++ r }
-w@(LayoutWindow Vertical l _) <|> r = unsize $ w { lwWindows = l ++ [r] }
-l <|> w@(LayoutWindow Vertical r _) = unsize $ w { lwWindows = (l:r) }
-l <|> r = unsize $ LayoutWindow Vertical [l, r] Nothing
+w@(LayoutWindow Vertical l _ _) <|> r = unsize $ w { lwWindows = l ++ [r] }
+l <|> w@(LayoutWindow Vertical r _ _) = unsize $ w { lwWindows = (l:r) }
+l <|> r = unsize $ LayoutWindow Vertical [l, r] Nothing Nothing
+
+splitFocusedWindow :: Eq a => Orientation -> Window a -> Window a -> Window a
+splitFocusedWindow o wins newWin = focus newWin (head $ doSplit Nothing [wins])
+  where
+    join = if o == Horizontal then (<->) else (<|>)
+    doSplit _ (w@(LayoutWindow {}):xs) =
+        (w { lwWindows = doSplit (Just w) (lwWindows w) }):xs
+    doSplit (Just parent) (w@(ContentWindow {cwHasFocus = True}):xs) =
+        if o == lwOrientation parent then w:newWin:xs else (w `join` newWin):xs
+    doSplit Nothing (w@(ContentWindow {cwHasFocus = True}):xs) = (w `join` newWin):xs
+    doSplit parent (x:xs) = x:(doSplit parent xs)
+
 
 unsize :: Window a -> Window a
 unsize w@(LayoutWindow { lwWindows = wins }) =
     w { lwRect = Nothing, lwWindows = Prelude.map unsize wins }
 unsize w@(ContentWindow {}) = w { cwRect = Nothing }
 
-height _ (LayoutWindow { lwRect = Just (Rect { rectHeight = h }) }) = h
-height _ (ContentWindow { cwRect = Just (Rect { rectHeight = h }) }) = h
-height defaultH (LayoutWindow Horizontal wins _) = foldr ((+) . height defaultH) 0 wins
+
+height defaultH (LayoutWindow _ wins (Just h) _) = max h 0
+height defaultH (LayoutWindow Horizontal wins _ _) = foldr ((+) . height defaultH) 0 wins
 height _ (ContentWindow { cwSize = (Just h) }) = max h 0
 height defaultH _ = defaultH
 
-width _ (LayoutWindow { lwRect = Just (Rect { rectWidth = w }) }) = w
-width _ (ContentWindow { cwRect = Just (Rect { rectWidth = w }) }) = w
-width defaultW (LayoutWindow Vertical wins _) = foldr ((+) . width defaultW) 0 wins
+width defaultW (LayoutWindow _ wins (Just w) _) = max w 0
+width defaultW (LayoutWindow Vertical wins _ _) = foldr ((+) . width defaultW) 0 wins
 width _ (ContentWindow { cwSize = (Just w) }) = max w 0
 width defaultW _ = defaultW
 
@@ -120,7 +144,7 @@ minHeight = height 0
 minWidth = width 0
 
 setRect :: Window a -> Rect -> Window a
-setRect w@(LayoutWindow o wins _) rect =
+setRect w@(LayoutWindow o wins size _) rect =
     w { lwWindows = sizedWins rect wins', lwRect = Just rect }
   where
     dimension = if o == Horizontal then rectHeight rect else rectWidth rect

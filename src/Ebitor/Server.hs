@@ -56,7 +56,7 @@ import qualified Ebitor.Window as W
 type Msg = (Int, B.ByteString)
 
 
-data Response = Screen (Window (R.Position, R.Rope))
+data Response = Screen (Window TruncatedEditor)
               | Disconnected
               | InvalidCommand
               deriving (Generic, Show)
@@ -200,24 +200,35 @@ receiveCommand :: Socket -> IO (Maybe Command)
 receiveCommand = fmap decodeCommand . receiveData
 
 
-getEditorDisplay :: Window Editor -> Window (R.Position, R.Rope)
-getEditorDisplay w@(ContentWindow { cwContent = e, cwRect = Just rect }) =
-    w { cwContent = (position e, R.slice r 0 end) }
+truncateWindowEditor :: Window Editor -> Window TruncatedEditor
+truncateWindowEditor w@(ContentWindow { cwContent = e, cwRect = Just rect }) =
+    w { cwContent = truncateEditor e (rectWidth rect, rectHeight rect) }
+
+windowFromText :: T.Text -> Window Editor
+windowFromText t = window (editor t) Nothing
   where
-    r = R.unlines $ drop (firstLine e - 1) (R.lines $ rope e)
-    end = fst $ R.positionForCursor r (R.Cursor (rectHeight rect, rectWidth rect + 1))
+    editor t = newEditor { rope = R.packText t }
 
 getStatusBar :: Session -> Window Editor
 getStatusBar sess = W.setSize (left <|> right) (Just 1)
   where
-    editor t = newEditor { rope = R.packText t }
-    windowFromText t = window (editor t) Nothing
     keys = eventsToString (keyBuffer sess)
     right = W.setSize (windowFromText $ T.pack keys) (Just $ length keys + 1)
     left = case lastMessage sess of
         Just (Message m) -> windowFromText m
         Just (ErrorMessage m) -> windowFromText m
         Nothing -> windowFromText ""
+
+addEditorStatusBar :: Window Editor -> Window Editor
+addEditorStatusBar w@(ContentWindow { cwContent = e }) = w <-> statusWin
+  where
+    R.Cursor (ln, col) = snd $ position e
+    cursorText = T.pack $ show ln ++ "," ++ show col
+    cursorWin = W.setSize (windowFromText cursorText) (Just $ T.length cursorText + 1)
+    fileWin = windowFromText $ case filePath e of
+        Just f -> T.pack f
+        Nothing -> "[ No file ]"
+    statusWin = W.setSize (fileWin <|> cursorWin) (Just 1)
 
 getScreen :: Session -> Maybe Message -> Response
 getScreen sess msg = Screen win
@@ -228,11 +239,11 @@ getScreen sess msg = Screen win
     statusBar = case focus sess of
         FocusCommandEditor -> commandBar
         _ -> getStatusBar sess
-    composedWin = editors sess <-> statusBar
+    composedWin = W.mapWindow addEditorStatusBar (editors sess) <-> statusBar
     focusedWin = case focus sess of
         FocusCommandEditor -> W.focus commandBar composedWin
         _ -> composedWin
-    win = W.mapWindow getEditorDisplay (W.setRect focusedWin displayRect)
+    win = W.mapWindow truncateWindowEditor (W.setRect focusedWin displayRect)
 
 
 runConn :: (Socket, SockAddr) -> Chan Msg -> Int -> IO ()

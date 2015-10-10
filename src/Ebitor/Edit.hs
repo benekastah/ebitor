@@ -1,6 +1,7 @@
 {-# LANGUAGE DeriveGeneric #-}
 module Ebitor.Edit
     ( Editor(..)
+    , TruncatedEditor()
     , backspace
     , cursorDown
     , cursorLeft
@@ -12,6 +13,11 @@ module Ebitor.Edit
     , insertChar
     , insertNewline
     , newEditor
+    , tFilePath
+    , tFirstLine
+    , tPosition
+    , tRope
+    , truncateEditor
     ) where
 
 import GHC.Generics
@@ -22,6 +28,7 @@ import Ebitor.Rope (Rope)
 import Ebitor.Rope.Cursor
 import qualified Ebitor.Rope as R
 
+
 data Editor = Editor
     { filePath :: Maybe FilePath
     , rope :: Rope
@@ -29,9 +36,23 @@ data Editor = Editor
     , firstLine :: Int
     }
     deriving (Generic, Show, Eq)
-
 instance FromJSON Editor
 instance ToJSON Editor
+
+
+newtype TruncatedEditor = TruncatedEditor Editor
+                        deriving (Generic, Show, Eq)
+instance FromJSON TruncatedEditor
+instance ToJSON TruncatedEditor
+
+getEditor :: TruncatedEditor -> Editor
+getEditor (TruncatedEditor e) = e
+
+tFilePath = filePath . getEditor
+tRope = rope . getEditor
+tPosition = position . getEditor
+tFirstLine = firstLine . getEditor
+
 
 newEditor :: Editor
 newEditor = Editor { filePath = Nothing
@@ -39,6 +60,12 @@ newEditor = Editor { filePath = Nothing
                    , position = newPosition
                    , firstLine = 1
                    }
+
+truncateEditor :: Editor -> (Int, Int) -> TruncatedEditor
+truncateEditor e (w, h) = TruncatedEditor $ e { rope = R.slice r 0 end }
+  where
+    r = R.unlines $ drop (firstLine e - 1) (R.lines $ rope e)
+    end = fst $ R.positionForCursor r (Cursor (h, w + 1))
 
 unreachable = error "unreachable"
 

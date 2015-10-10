@@ -41,7 +41,7 @@ data App = App
            , quit :: IO ()
            }
 
-type Window_ = Window (R.Position, R.Rope)
+type Window_ = Window TruncatedEditor
 
 
 loggerName = "Ebitor.Vty"
@@ -58,7 +58,7 @@ setCursor vty w = do
     let out = outputIface vty
         focused = W.getFocusedWindow w
         rect = fromJust $ W.cwRect focused
-        R.Cursor (ln, col) = snd . fst $ W.cwContent focused
+        R.Cursor (ln, col) = snd . tPosition $ W.cwContent focused
     setCursorPos out (col - 1 + W.rectX rect) (ln - 1 + W.rectY rect)
     showCursor out
 
@@ -71,7 +71,8 @@ imageForWindow w = imageForWindow' w
         in  cat $ map imageForWindow' wins
 
     imageForWindow' w =
-        let ((_, R.Cursor (ln, col)), r) = cwContent w
+        let R.Cursor (ln, col) = snd . tPosition $ cwContent w
+            r = tRope $ cwContent w
             img = vertCat $ map imageForLine $ R.lines r
             rect = fromJust $ cwRect w
             resizeWidth' w = if w >= 0 then resizeWidth w else id

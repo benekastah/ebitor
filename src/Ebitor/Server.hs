@@ -5,6 +5,7 @@ module Ebitor.Server
     , Message(..)
     , Response(..)
     , Window(..)
+    , WindowContent(..)
     , defaultSockAddr
     , receiveCommand
     , receiveResponse
@@ -56,7 +57,7 @@ import qualified Ebitor.Window as W
 type Msg = (Int, B.ByteString)
 
 
-data Response = Screen (Window TruncatedEditor)
+data Response = Screen (Window WindowContent)
               | Disconnected
               | InvalidCommand
               deriving (Generic, Show)
@@ -67,11 +68,18 @@ encodeResponse = encode
 decodeResponse :: B.ByteString -> Maybe Response
 decodeResponse = decode
 
+data WindowContent = WEditor Editor
+                   | WTruncatedEditor TruncatedEditor
+                   | WRope R.Rope
+                   deriving (Generic, Show, Eq)
+instance FromJSON WindowContent
+instance ToJSON WindowContent
+
 data Focus = FocusEditors | FocusCommandEditor deriving (Show, Eq)
 
 type KeyHandler = [Event] -> Session -> IO Session
 data Session = Session
-               { editors :: Window Editor
+               { editors :: Window WindowContent
                , commandEditor :: Editor
                , focus :: Focus
                , commander :: Commander
@@ -94,10 +102,12 @@ newSession sock = Session { editors = W.focus win win
                           , displaySize = (0, 0)
                           }
   where
-    win = window newEditor Nothing
+    win = window (WEditor newEditor) Nothing
 
 updateEditor :: (Editor -> Editor) -> Session -> Session
-updateEditor f s = s { editors = W.updateFocused f (editors s) }
+updateEditor f s = s { editors = W.updateFocused doUpdate (editors s) }
+  where
+    doUpdate (WEditor e) = WEditor $ f e
 
 updateCommandEditor :: (Editor -> Editor) -> Session -> Session
 updateCommandEditor f s = s { commandEditor = f (commandEditor s) }
@@ -200,42 +210,41 @@ receiveCommand :: Socket -> IO (Maybe Command)
 receiveCommand = fmap decodeCommand . receiveData
 
 
-truncateWindowEditor :: Window Editor -> Window TruncatedEditor
-truncateWindowEditor w@(ContentWindow { cwContent = e, cwRect = Just rect }) =
-    w { cwContent = truncateEditor e (rectWidth rect, rectHeight rect) }
+truncateWindowEditor :: Window WindowContent -> Window WindowContent
+truncateWindowEditor w@(ContentWindow { cwContent = WEditor e, cwRect = Just rect }) =
+    w { cwContent = WTruncatedEditor $ truncateEditor e (rectWidth rect, rectHeight rect) }
+truncateWindowEditor w = w
 
-windowFromText :: T.Text -> Window Editor
-windowFromText t = window (editor t) Nothing
-  where
-    editor t = newEditor { rope = R.packText t }
+windowFromRope :: R.Rope -> Window WindowContent
+windowFromRope r = window (WRope r) Nothing
 
-getStatusBar :: Session -> Window Editor
+getStatusBar :: Session -> Window WindowContent
 getStatusBar sess = W.setSize (left <|> right) (Just 1)
   where
     keys = eventsToString (keyBuffer sess)
-    right = W.setSize (windowFromText $ T.pack keys) (Just $ length keys + 1)
+    right = W.setSize (windowFromRope $ R.pack keys) (Just $ length keys + 1)
     left = case lastMessage sess of
-        Just (Message m) -> windowFromText m
-        Just (ErrorMessage m) -> windowFromText m
-        Nothing -> windowFromText ""
+        Just (Message m) -> windowFromRope $ R.packText m
+        Just (ErrorMessage m) -> windowFromRope $ R.packText m
+        Nothing -> windowFromRope ""
 
-addEditorStatusBar :: Window Editor -> Window Editor
-addEditorStatusBar w@(ContentWindow { cwContent = e }) = w <-> statusWin
+addEditorStatusBar :: Window WindowContent -> Window WindowContent
+addEditorStatusBar w@(ContentWindow { cwContent = WEditor e }) = w <-> statusWin
   where
     R.Cursor (ln, col) = snd $ position e
-    cursorText = T.pack $ show ln ++ "," ++ show col
-    cursorWin = W.setSize (windowFromText cursorText) (Just $ T.length cursorText + 1)
-    fileWin = windowFromText $ case filePath e of
-        Just f -> T.pack f
-        Nothing -> "[ No file ]"
+    curs = R.pack $ show ln ++ "," ++ show col
+    cursorWin = W.setSize (windowFromRope curs) (Just $ R.length curs + 1)
+    fileWin = windowFromRope $ case filePath e of
+        Just f -> R.pack f
+        Nothing -> "[No file]"
     statusWin = W.setSize (fileWin <|> cursorWin) (Just 1)
 
-getScreen :: Session -> Maybe Message -> Response
-getScreen sess msg = Screen win
+getSizedUI :: Session -> Window WindowContent
+getSizedUI sess = W.setRect focusedWin displayRect
   where
     (w, h) = displaySize sess
     displayRect = W.Rect 0 0 w h
-    commandBar = window (commandEditor sess) (Just 1)
+    commandBar = window (WEditor $ commandEditor sess) (Just 1)
     statusBar = case focus sess of
         FocusCommandEditor -> commandBar
         _ -> getStatusBar sess
@@ -243,7 +252,22 @@ getScreen sess msg = Screen win
     focusedWin = case focus sess of
         FocusCommandEditor -> W.focus commandBar composedWin
         _ -> composedWin
-    win = W.mapWindow truncateWindowEditor (W.setRect focusedWin displayRect)
+
+getScreen :: Session -> Response
+getScreen sess = Screen $ W.mapWindow truncateWindowEditor $ getSizedUI sess
+
+onCursorMove :: Session -> Session
+onCursorMove sess =
+    if fstLine == firstLine e then
+        sess
+    else
+        sess { editors = W.updateFocused setFirstLine (editors sess) }
+  where
+    ContentWindow { cwContent = WEditor e, cwRect = Just (W.Rect _ _ _ h) } =
+        W.getFocusedWindow (getSizedUI sess)
+    R.Cursor (ln, _) = snd $ position e
+    fstLine = min (max (firstLine e) (ln - h + 1)) ln
+    setFirstLine (WEditor e) = WEditor $ e { firstLine = fstLine }
 
 
 runConn :: (Socket, SockAddr) -> Chan Msg -> Int -> IO ()
@@ -264,10 +288,11 @@ runConn (sock, _) chan nr = do
         case cmd of
             Just cmd -> do
                 debugM loggerName ("Command: " ++ show cmd)
-                sess <- readIORef sessionRef >>= handleCommand cmd
+                -- TODO don't do onCursorMove unless the cursor actually moved
+                sess <- readIORef sessionRef >>= handleCommand cmd >>= return . onCursorMove
                 let msg = lastMessage sess
                 writeIORef sessionRef $ sess { lastMessage = Nothing }
-                let screen = getScreen sess msg
+                let screen = getScreen sess
                 sendResponse' sock screen
             Nothing -> sendResponse' sock InvalidCommand
         loop
@@ -303,27 +328,29 @@ handleCommand (EditFile fname) s = do
     case result of
         Right r -> do
             let e = newEditor { filePath = Just fname, rope = r }
-            return $ s { editors = W.updateFocused (const e) (editors s) }
+            return $ updateEditor (const e) s
         Left e
             | isDoesNotExistError e ->
                 let updateFname e = e { filePath = Just fname }
-                in  return $ s { editors = W.updateFocused updateFname (editors s) }
+                in  return $ updateEditor updateFname s
             | otherwise -> errorMessage $ getIOErrorMessage e $ T.pack fname
   where
     errorMessage msg = return $ s { lastMessage = Just $ ErrorMessage msg }
 handleCommand (WriteFile Nothing) s = do
-    let e = getFocused (editors s)
+    let WEditor e = getFocused (editors s)
     case (filePath e) of
         Just fname -> handleCommand (WriteFile $ Just fname) s
         Nothing -> return $ s { lastMessage = Just $ ErrorMessage "No file name" }
 handleCommand (WriteFile (Just fname)) s = do
-    R.writeFile fname $ rope (getFocused $ editors s)
-    return $ s { editors = updateFocused updateFname (editors s) }
+    R.writeFile fname $ rope e
+    return $ updateEditor updateFname s
   where
+    WEditor e = getFocused $ editors s
     updateFname e = e { filePath = Just fname }
 handleCommand (UpdateDisplaySize size) s = return s { displaySize = size }
 handleCommand (SplitWindow o fname) s = do
-    let editors' = W.splitFocusedWindow o (editors s) (window newEditor Nothing)
+    let editors' = W.splitFocusedWindow o (editors s)
+                                          (window (WEditor newEditor) Nothing)
         s' = s { editors = editors' }
     case fname of
         Just f -> handleCommand (EditFile f) s'

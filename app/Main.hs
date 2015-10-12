@@ -41,7 +41,7 @@ data App = App
            , quit :: IO ()
            }
 
-type Window_ = Window TruncatedEditor
+type Window_ = Window WindowContent
 
 
 loggerName = "Ebitor.Vty"
@@ -58,8 +58,10 @@ setCursor vty w = do
     let out = outputIface vty
         focused = W.getFocusedWindow w
         rect = fromJust $ W.cwRect focused
-        R.Cursor (ln, col) = snd . tPosition $ W.cwContent focused
-    setCursorPos out (col - 1 + W.rectX rect) (ln - 1 + W.rectY rect)
+        WTruncatedEditor e = W.cwContent focused
+        R.Cursor (ln, col) = snd $ tPosition e
+        fstLn = tFirstLine e - 1
+    setCursorPos out (col - 1 + W.rectX rect) (ln - 1 - fstLn + W.rectY rect)
     showCursor out
 
 imageForWindow :: Window_ -> Image
@@ -71,8 +73,9 @@ imageForWindow w = imageForWindow' w
         in  cat $ map imageForWindow' wins
 
     imageForWindow' w =
-        let R.Cursor (ln, col) = snd . tPosition $ cwContent w
-            r = tRope $ cwContent w
+        let r = case cwContent w of
+                WTruncatedEditor e -> tRope e
+                WRope r -> r
             img = vertCat $ map imageForLine $ R.lines r
             rect = fromJust $ cwRect w
             resizeWidth' w = if w >= 0 then resizeWidth w else id
@@ -152,7 +155,7 @@ main = do
     programStatus <- newEmptyMVar
     vty <- getVty
 
-    -- Not working. Why?
+    -- Not working. Why? Why indeed.
     _ <- installHandler sigTSTP Sig.Default Nothing
 
     sock <- catch getSocket $ \e -> do

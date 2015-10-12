@@ -45,8 +45,8 @@ library
                        -- Only used for keyboard event handling types
                        , vty == 5.4.*
                        , zlib == 0.5.4.*
-    default-extensions:  OverloadedStrings
-    other-extensions:    GADTs
+    default-extensions:  DeriveGeneric
+                       , OverloadedStrings
     default-language:    Haskell2010
 
 executable eb-server

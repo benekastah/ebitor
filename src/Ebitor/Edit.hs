@@ -67,8 +67,6 @@ truncateEditor e (w, h) = TruncatedEditor $ e { rope = R.slice r 0 end }
     r = R.unlines $ drop (firstLine e - 1) (R.lines $ rope e)
     end = fst $ R.positionForCursor r (Cursor (h, w + 1))
 
-unreachable = error "unreachable"
-
 editorIndex = positionIndex . position
 editorCursor = positionCursor . position
 

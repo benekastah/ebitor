@@ -99,18 +99,18 @@ focus q w@(ContentWindow {}) = w { cwHasFocus = q == w }
 infixr 7 <->
 (<->) :: Window a -> Window a -> Window a
 w@(LayoutWindow Horizontal l _ _) <-> (LayoutWindow Horizontal r _ _) =
-    unsize $ w { lwWindows = l ++ r }
-w@(LayoutWindow Horizontal l _ _) <-> r = unsize $ w { lwWindows = l ++ [r] }
-l <-> w@(LayoutWindow Horizontal r _ _) = unsize $ w { lwWindows = (l:r) }
-l <-> r = unsize $ LayoutWindow Horizontal [l, r] Nothing Nothing
+    w { lwWindows = l ++ r }
+w@(LayoutWindow Horizontal l _ _) <-> r = w { lwWindows = l ++ [r] }
+l <-> w@(LayoutWindow Horizontal r _ _) = w { lwWindows = (l:r) }
+l <-> r = LayoutWindow Horizontal [l, r] Nothing Nothing
 
 infixr 7 <|>
 (<|>) :: Window a -> Window a -> Window a
 w@(LayoutWindow Vertical l _ _) <|> (LayoutWindow Vertical r _ _) =
-    unsize $ w { lwWindows = l ++ r }
-w@(LayoutWindow Vertical l _ _) <|> r = unsize $ w { lwWindows = l ++ [r] }
-l <|> w@(LayoutWindow Vertical r _ _) = unsize $ w { lwWindows = (l:r) }
-l <|> r = unsize $ LayoutWindow Vertical [l, r] Nothing Nothing
+    w { lwWindows = l ++ r }
+w@(LayoutWindow Vertical l _ _) <|> r = w { lwWindows = l ++ [r] }
+l <|> w@(LayoutWindow Vertical r _ _) = w { lwWindows = (l:r) }
+l <|> r = LayoutWindow Vertical [l, r] Nothing Nothing
 
 splitFocusedWindow :: Eq a => Orientation -> Window a -> Window a -> Window a
 splitFocusedWindow o wins newWin = focus newWin (head $ doSplit Nothing [wins])
@@ -122,12 +122,6 @@ splitFocusedWindow o wins newWin = focus newWin (head $ doSplit Nothing [wins])
         if o == lwOrientation parent then w:newWin:xs else (w `join` newWin):xs
     doSplit Nothing (w@(ContentWindow {cwHasFocus = True}):xs) = (w `join` newWin):xs
     doSplit parent (x:xs) = x:(doSplit parent xs)
-
-
-unsize :: Window a -> Window a
-unsize w@(LayoutWindow { lwWindows = wins }) =
-    w { lwRect = Nothing, lwWindows = Prelude.map unsize wins }
-unsize w@(ContentWindow {}) = w { cwRect = Nothing }
 
 
 height defaultH (LayoutWindow _ wins (Just h) _) = max h 0

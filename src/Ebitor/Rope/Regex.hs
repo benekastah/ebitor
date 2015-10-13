@@ -8,6 +8,7 @@ module Ebitor.Rope.Regex
     , compile
     , compileDefault
     , execute
+    , matchOnce
     , regexec
     , replace
     , replaceCount

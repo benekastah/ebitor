@@ -58,18 +58,18 @@ executable eb-server
     default-extensions:  OverloadedStrings
     default-language:    Haskell2010
 
-executable eb-server-profile
-    hs-source-dirs:      server
-    main-is:             Main.hs
-    ghc-options:         -threaded
-                         -O2
-                         -rtsopts
-                         -fprof-auto
-                         "-with-rtsopts=-N -p -s -h -i0.1"
-    build-depends:       base
-                       , ebitor
-    default-extensions:  OverloadedStrings
-    default-language:    Haskell2010
+-- executable eb-server-profile
+--     hs-source-dirs:      server
+--     main-is:             Main.hs
+--     ghc-options:         -threaded
+--                          -O2
+--                          -rtsopts
+--                          -fprof-auto
+--                          "-with-rtsopts=-N -p -s -h -i0.1"
+--     build-depends:       base
+--                        , ebitor
+--     default-extensions:  OverloadedStrings
+--     default-language:    Haskell2010
 
 executable eb
     hs-source-dirs:      app
@@ -90,28 +90,28 @@ executable eb
     default-extensions:  OverloadedStrings
     default-language:    Haskell2010
 
-executable eb-profile
-    hs-source-dirs:      app
-    main-is:             Main.hs
-    ghc-options:         -threaded
-                         -O2
-                         -rtsopts
-                         -fprof-auto
-                         "-with-rtsopts=-N -p -s -h -i0.1"
-    build-depends:       base
-                       , aeson == 0.9.0.*
-                       , bytestring
-                       , ebitor
-                       , filepath
-                       , hslogger == 1.2.*
-                       , network == 2.6.2.*
-                       , random
-                       , stm == 2.4.*
-                       , text >= 1.2 && < 1.3
-                       , unix == 2.7.*
-                       , vty == 5.4.*
-    default-extensions:  OverloadedStrings
-    default-language:    Haskell2010
+-- executable eb-profile
+--     hs-source-dirs:      app
+--     main-is:             Main.hs
+--     ghc-options:         -threaded
+--                          -O2
+--                          -rtsopts
+--                          -fprof-auto
+--                          "-with-rtsopts=-N -p -s -h -i0.1"
+--     build-depends:       base
+--                        , aeson == 0.9.0.*
+--                        , bytestring
+--                        , ebitor
+--                        , filepath
+--                        , hslogger == 1.2.*
+--                        , network == 2.6.2.*
+--                        , random
+--                        , stm == 2.4.*
+--                        , text >= 1.2 && < 1.3
+--                        , unix == 2.7.*
+--                        , vty == 5.4.*
+--     default-extensions:  OverloadedStrings
+--     default-language:    Haskell2010
 
 
 test-suite ebitor-test

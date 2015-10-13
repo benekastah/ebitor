@@ -7,7 +7,13 @@ module Ebitor.Edit
     , cursorLeft
     , cursorMove
     , cursorRight
+    , cursorToBOL
+    , cursorToBottom
+    , cursorToEOL
+    , cursorToTop
     , cursorUp
+    , cursorWordLeft
+    , cursorWordRight
     , editorCursor
     , editorIndex
     , insertChar
@@ -20,6 +26,8 @@ module Ebitor.Edit
     , truncateEditor
     ) where
 
+import Data.Array((!))
+import Data.Char
 import GHC.Generics
 
 import Data.Aeson (FromJSON, ToJSON)
@@ -27,6 +35,7 @@ import Data.Aeson (FromJSON, ToJSON)
 import Ebitor.Rope (Rope)
 import Ebitor.Rope.Cursor
 import qualified Ebitor.Rope as R
+import qualified Ebitor.Rope.Regex as R
 
 
 data Editor = Editor
@@ -104,6 +113,11 @@ backspace editor = deleteBack editor
     idx = editorIndex editor - 1
     crlf = R.slice (rope editor) (idx - 1) (idx + 1) == "\r\n"
 
+cursorMoveToIndex :: Int -> Editor -> Editor
+cursorMoveToIndex i e =
+    let (_, curs) = R.positionForIndex (rope e) i
+    in  cursorMove (const curs) e
+
 cursorMove :: (Cursor -> Cursor) -> Editor -> Editor
 cursorMove f editor =
     let (_, c) = position editor
@@ -121,3 +135,47 @@ cursorRight = cursorMove $ \(Cursor (ln, col)) -> Cursor (ln, col + 1)
 
 cursorLeft :: Editor -> Editor
 cursorLeft = cursorMove $ \(Cursor (ln, col)) -> Cursor (ln, col - 1)
+
+cursorToNextMatch :: R.Regex -> Editor -> Editor
+cursorToNextMatch regex editor =
+    let i = fst . position $ editor
+        r = snd $ R.splitAt i (rope editor)
+    in  case R.matchOnce regex r of
+        Just match ->
+            let (offset, _) = match ! 0
+            in  cursorMoveToIndex (i + offset) editor
+        Nothing -> editor
+
+cursorToPrevMatch :: R.Regex -> Editor -> Editor
+cursorToPrevMatch regex editor =
+    let i = fst . position $ editor
+        r = fst $ R.splitAt i (rope editor)
+    in  case R.matchOnce regex (R.reverse r) of
+        Just match ->
+            let (offset, _) = match ! 0
+            in  cursorMoveToIndex (i - offset) editor
+        Nothing -> editor
+
+cursorWordRight :: Editor -> Editor
+cursorWordRight = cursorToNextMatch regex
+  where
+    Right regex = R.compileDefault "\\b"
+
+cursorWordLeft :: Editor -> Editor
+cursorWordLeft = cursorToPrevMatch regex
+  where
+    Right regex = R.compileDefault "\\b"
+
+cursorToTop :: Editor -> Editor
+cursorToTop = cursorMoveToIndex 0
+
+cursorToBottom :: Editor -> Editor
+cursorToBottom editor = cursorMoveToIndex (R.length $ rope editor) editor
+
+cursorToBOL :: Editor -> Editor
+cursorToBOL = cursorMove $ \(Cursor (ln, col)) -> Cursor (ln, 1)
+
+cursorToEOL :: Editor -> Editor
+cursorToEOL = cursorToNextMatch regex
+  where
+    Right regex = R.compileDefault "$"

@@ -364,6 +364,12 @@ normalMode [EvKey (KChar 'h') []] = returnClear . updateEditor cursorLeft
 normalMode [EvKey (KChar 'j') []] = returnClear . updateEditor cursorDown
 normalMode [EvKey (KChar 'k') []] = returnClear . updateEditor cursorUp
 normalMode [EvKey (KChar 'l') []] = returnClear . updateEditor cursorRight
+normalMode [EvKey (KChar 'e') []] = returnClear . updateEditor cursorWordRight
+normalMode [EvKey (KChar 'b') []] = returnClear . updateEditor cursorWordLeft
+normalMode [EvKey (KChar 'g') [], EvKey (KChar 'g') []] = returnClear . updateEditor cursorToTop
+normalMode [EvKey (KChar 'G') []] = returnClear . updateEditor cursorToBottom
+normalMode [EvKey (KChar '0') []] = returnClear . updateEditor cursorToBOL
+normalMode [EvKey (KChar '$') []] = returnClear . updateEditor cursorToEOL
 normalMode [EvKey (KChar 'w') [MCtrl], EvKey (KChar 'h') mods]
     | mods == [MCtrl] || mods == [] = \s ->
         returnClear $ s { editors = W.focusPrev (editors s) }

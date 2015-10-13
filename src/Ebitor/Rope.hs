@@ -127,13 +127,27 @@ drop :: Int -> Rope -> Rope
 drop = (snd .) . Ebitor.Rope.splitAt
 
 findIndex :: (Char -> Bool) -> Rope -> Maybe Int
-findIndex f r = findIndex' $ fromRope r
+findIndex test r = findIndex' $ fromRope r
   where
     findIndex' r = case viewl r of
         EmptyL -> Nothing
-        Chunk _ t :< rest -> case T.findIndex f t of
+        Chunk _ t :< rest -> case T.findIndex test t of
             Nothing -> findIndex' rest
             result -> result
+
+findIndexEnd :: (Char -> Bool) -> Rope -> Maybe Int
+findIndexEnd test r =
+    fmap (Ebitor.Rope.length r -) (findIndex test $ Ebitor.Rope.reverse r)
+
+findIndexFrom :: Int -> (Char -> Bool) -> Rope -> Maybe Int
+findIndexFrom i test r =
+    let (a, b) = Ebitor.Rope.splitAt i r
+    in  fmap (+ (Ebitor.Rope.length a)) (findIndex test b)
+
+findIndexEndFrom :: Int -> (Char -> Bool) -> Rope -> Maybe Int
+findIndexEndFrom i test r =
+    let (a, b) = Ebitor.Rope.splitAt i r
+    in  findIndexEnd test a
 
 takeWhile :: (Char -> Bool) -> Rope -> Rope
 takeWhile f = Rope . takeWhile' . fromRope
@@ -147,6 +161,15 @@ takeWhile f = Rope . takeWhile' . fromRope
                 chunk <| takeWhile' rest
             else
                 F.singleton $ Chunk l' t'
+
+
+reverse :: Rope -> Rope
+reverse = Rope . reverse' F.empty . fromRope
+  where
+    reverse' result r = case viewr r of
+        EmptyR -> result
+        rest :> Chunk l t ->
+            reverse' (Chunk l (T.reverse t) <| result) rest
 
 
 takeWhileEnd :: (Char -> Bool) -> Rope -> Rope

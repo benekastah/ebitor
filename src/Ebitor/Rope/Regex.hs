@@ -7,8 +7,11 @@ module Ebitor.Rope.Regex
     , ExecOption
     , compile
     , compileDefault
+    , compileFast
     , execute
+    , matchAll
     , matchOnce
+    , matchOnceFrom
     , regexec
     , replace
     , replaceCount
@@ -20,7 +23,7 @@ import Data.Array((!),elems)
 import Text.Regex.Base(MatchArray,RegexContext(..),RegexMaker(..),RegexLike(..),Extract(..))
 import Text.Regex.Base.Impl(polymatch,polymatchM)
 import Text.Regex.Base.RegexLike (defaultExecOpt, defaultCompOpt)
-import Text.Regex.TDFA.Common(Regex(..),CompOption,ExecOption(captureGroups))
+import Text.Regex.TDFA.Common(Regex(..),CompOption(lastStarGreedy),ExecOption(captureGroups))
 import Text.Regex.TDFA.ReadRegex(parseRegex)
 import Text.Regex.TDFA.String() -- piggyback on RegexMaker for String
 import Text.Regex.TDFA.TDFA(patternToRegex)
@@ -73,8 +76,14 @@ compile compOpt execOpt rope =
         Left err -> Left ("parseRegex for Ebitor.Rope.Regex failed:"++show err)
         Right pattern -> Right (patternToRegex pattern compOpt execOpt)
 
+fastCompOpt = defaultCompOpt { lastStarGreedy = True }
+fastExecOpt = defaultExecOpt { captureGroups = False }
+
 compileDefault :: Rope -> Either String Regex
 compileDefault = compile defaultCompOpt defaultExecOpt
+
+compileFast :: Rope -> Either String Regex
+compileFast = compile fastCompOpt fastExecOpt
 
 execute :: Regex      -- ^ Compiled regular expression
         -> Rope -- ^ Rope to match against
@@ -122,3 +131,9 @@ replace :: Regex
         -> Rope
         -> Rope
 replace = replaceCount (-1)
+
+
+matchOnceFrom :: Regex -> Int -> Rope -> Maybe (Int, Int)
+matchOnceFrom regex i rope =
+    let r = snd $ R.splitAt i rope
+    in  (\(offset, len) -> (i + offset, len)) `fmap` (!0) `fmap` (matchOnce regex r)

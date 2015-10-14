@@ -8,6 +8,7 @@ module Ebitor.Edit
     , cursorMove
     , cursorRight
     , cursorToBOL
+    , cursorToBOL'
     , cursorToBottom
     , cursorToEOL
     , cursorToTop
@@ -139,32 +140,31 @@ cursorLeft = cursorMove $ \(Cursor (ln, col)) -> Cursor (ln, col - 1)
 cursorToNextMatch :: R.Regex -> Editor -> Editor
 cursorToNextMatch regex editor =
     let i = fst . position $ editor
-        r = snd $ R.splitAt i (rope editor)
-    in  case R.matchOnce regex r of
-        Just match ->
-            let (offset, _) = match ! 0
-            in  cursorMoveToIndex (i + offset) editor
+    in  case R.matchOnceFrom regex (i + 1) (rope editor) of
+        Just (offset, _) -> cursorMoveToIndex offset editor
         Nothing -> editor
 
+-- Not performant enough
 cursorToPrevMatch :: R.Regex -> Editor -> Editor
 cursorToPrevMatch regex editor =
     let i = fst . position $ editor
-        r = fst $ R.splitAt i (rope editor)
-    in  case R.matchOnce regex (R.reverse r) of
-        Just match ->
-            let (offset, _) = match ! 0
-            in  cursorMoveToIndex (i - offset) editor
-        Nothing -> editor
+        r = fst $ R.splitAt (i - 1) (rope editor)
+    in  case R.matchAll regex r of
+        [] -> editor
+        xs ->
+            let match = last xs
+                (offset, len) = match ! 0
+            in  cursorMoveToIndex (offset + len) editor
 
 cursorWordRight :: Editor -> Editor
 cursorWordRight = cursorToNextMatch regex
   where
-    Right regex = R.compileDefault "\\b"
+    Right regex = R.compileDefault "\\>"
 
 cursorWordLeft :: Editor -> Editor
 cursorWordLeft = cursorToPrevMatch regex
   where
-    Right regex = R.compileDefault "\\b"
+    Right regex = R.compileFast "\\<"
 
 cursorToTop :: Editor -> Editor
 cursorToTop = cursorMoveToIndex 0
@@ -175,7 +175,16 @@ cursorToBottom editor = cursorMoveToIndex (R.length $ rope editor) editor
 cursorToBOL :: Editor -> Editor
 cursorToBOL = cursorMove $ \(Cursor (ln, col)) -> Cursor (ln, 1)
 
+cursorToBOL' :: Editor -> Editor
+cursorToBOL' editor =
+    let Cursor (ln, _) = snd . position $ editor
+        i = fst $ R.positionForCursor (rope editor) (Cursor (ln, 1))
+        Right regex = R.compileFast "^[[:space:]]*"
+    in  case R.matchOnceFrom regex i (rope editor) of
+        Just (offset, len) -> cursorMoveToIndex (offset + len) editor
+        Nothing -> editor
+
 cursorToEOL :: Editor -> Editor
 cursorToEOL = cursorToNextMatch regex
   where
-    Right regex = R.compileDefault "$"
+    Right regex = R.compileFast "$"

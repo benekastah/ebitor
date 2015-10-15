@@ -4,9 +4,10 @@ module Ebitor.Rope.RegexTest (htf_thisModulesTests) where
 import Test.Framework
 
 import Text.Regex.TDFA
+import Data.Array((!))
 
 import Ebitor.Rope
-import Ebitor.Rope.Regex (replace, replaceOne, compileDefault)
+import Ebitor.Rope.Regex
 import Ebitor.RopeUtils
 import Ebitor.Utils
 
@@ -32,3 +33,18 @@ test_replaceOne = assertEqual expected (replaceOne reg replacement haystack)
     haystack = "Hey rude dude"
     reg = fromRight $ compileDefault ".ude"
     replacement = "man"
+
+
+test_matchOnceEnd = assertEqual expected result
+  where
+    expected = Just (12, 7)
+    haystack = pack' "chicken egg chicken egg"
+    Right regex = compileDefault "chicken"
+    result = matchOnceEnd regex haystack
+
+test_matchOnceBefore = assertEqual expected result
+  where
+    expected = Just (44, 0)
+    haystack = pack' "chicken egg chicken egg\nchicken egg chicken egg"
+    Right regex = compileDefault "\\<"
+    result = matchOnceBefore regex (Ebitor.Rope.length haystack) haystack

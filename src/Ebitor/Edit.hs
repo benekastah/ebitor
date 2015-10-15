@@ -144,17 +144,12 @@ cursorToNextMatch regex editor =
         Just (offset, _) -> cursorMoveToIndex offset editor
         Nothing -> editor
 
--- Not performant enough
 cursorToPrevMatch :: R.Regex -> Editor -> Editor
 cursorToPrevMatch regex editor =
     let i = fst . position $ editor
-        r = fst $ R.splitAt (i - 1) (rope editor)
-    in  case R.matchAll regex r of
-        [] -> editor
-        xs ->
-            let match = last xs
-                (offset, len) = match ! 0
-            in  cursorMoveToIndex (offset + len) editor
+    in  case R.matchOnceBefore regex (i - 1) (rope editor) of
+        Just (offset, len) -> cursorMoveToIndex (offset + len) editor
+        Nothing -> editor
 
 cursorWordRight :: Editor -> Editor
 cursorWordRight = cursorToNextMatch regex
@@ -164,7 +159,7 @@ cursorWordRight = cursorToNextMatch regex
 cursorWordLeft :: Editor -> Editor
 cursorWordLeft = cursorToPrevMatch regex
   where
-    Right regex = R.compileFast "\\<"
+    Right regex = R.compileDefault "\\<"
 
 cursorToTop :: Editor -> Editor
 cursorToTop = cursorMoveToIndex 0

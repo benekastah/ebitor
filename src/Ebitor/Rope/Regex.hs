@@ -11,6 +11,8 @@ module Ebitor.Rope.Regex
     , execute
     , matchAll
     , matchOnce
+    , matchOnceEnd
+    , matchOnceBefore
     , matchOnceFrom
     , regexec
     , replace
@@ -32,6 +34,8 @@ import Data.Maybe(listToMaybe)
 import Text.Regex.TDFA.NewDFA.Engine(execMatch)
 import Text.Regex.TDFA.NewDFA.Tester as Tester(matchTest)
 import Text.Regex.TDFA.NewDFA.Uncons as Uncons(Uncons(..))
+import Data.FingerTree ((<|), ViewR((:>)))
+import qualified Data.FingerTree as F
 
 import Ebitor.Rope (Rope)
 import qualified Ebitor.Rope as R
@@ -136,4 +140,25 @@ replace = replaceCount (-1)
 matchOnceFrom :: Regex -> Int -> Rope -> Maybe (Int, Int)
 matchOnceFrom regex i rope =
     let r = snd $ R.splitAt i rope
-    in  (\(offset, len) -> (i + offset, len)) `fmap` (!0) `fmap` (matchOnce regex r)
+    in  setOffset `fmap` (!0) `fmap` (matchOnce regex r)
+  where
+    setOffset (offset, len) = (i + offset, len)
+
+matchOnceEnd :: Regex -> Rope -> Maybe (Int, Int)
+matchOnceEnd regex (R.Rope rope) = matchOnceEnd' [] rope F.empty
+  where
+    matchOnceEnd' matches rest rope
+        | length matches > 1 || F.null rest =
+            setOffset `fmap` (!0) `fmap` listToMaybe (reverse matches)
+        | otherwise =
+            let rest' :> chunk = F.viewr rest
+                rope' = chunk <| rope
+            in  matchOnceEnd' (matchAll regex $ R.Rope rope') rest' rope'
+      where
+        restLen = R.length (R.Rope rest)
+        setOffset (offset, len) = (restLen + offset, len)
+
+matchOnceBefore :: Regex -> Int -> Rope -> Maybe (Int, Int)
+matchOnceBefore regex i rope =
+    let r = fst $ R.splitAt i rope
+    in  matchOnceEnd regex r

@@ -2,9 +2,10 @@
 module Ebitor.RopeTest (htf_thisModulesTests) where
 
 import Data.Either
-import Data.List (foldl', intercalate, findIndex)
+import Data.List (foldl')
 import Data.Maybe (fromJust)
 import Prelude as P
+import qualified Data.List as L
 
 import Test.Framework
 import Test.QuickCheck.Arbitrary
@@ -115,19 +116,8 @@ prop_uncons s1@(ch1:s2) =
     in  ch1 == ch2 && R.unpack r == s2
 
 
--- prop_words s = map unpack (R.words $ pack s) == P.words s
 prop_lines s = map packRope (P.lines s) == R.lines (packRope s)
--- prop_unwords s = unpack (R.unwords $ map pack s) == P.unwords s
 prop_unlines s = unpack (R.unlines $ map pack s) == P.unlines s
-
--- prop_head = forAll (suchThat arbitrary ((>0) . P.length)) $ \s ->
---     R.head (packRope s) == P.head s
--- prop_last = forAll (suchThat arbitrary ((>0) . P.length)) $ \s ->
---     R.last (packRope s) == P.last s
--- prop_init = forAll (suchThat arbitrary ((>0) . P.length)) $ \s ->
---     R.unpack (R.init $ packRope s) == P.init s
--- prop_tail = forAll (suchThat arbitrary ((>0) . P.length)) $ \s ->
---     R.unpack (R.tail $ packRope s) == P.tail s
 
 prop_slice s =
     forAll (suchThat arbitrary (>=0)) $ \start ->
@@ -137,3 +127,5 @@ prop_slice s =
 prop_sliceEmpty1 r i = "" == R.slice r i i
 prop_sliceEmpty2 r = forAll (suchThat arbitrary (>= (R.length r))) $ \i ->
     "" == R.slice r i (i + 1)
+
+prop_findIndex s c = L.findIndex (==c) s == R.findIndex (==c) (packRope s)

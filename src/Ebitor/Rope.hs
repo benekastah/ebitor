@@ -6,6 +6,7 @@ import Control.Applicative (pure)
 import Data.Char
 import Data.Foldable (toList)
 import Data.List (foldl')
+import Data.Maybe
 import Data.Monoid
 import Data.String (IsString, fromString)
 
@@ -131,8 +132,8 @@ findIndex test r = findIndex' $ fromRope r
   where
     findIndex' r = case viewl r of
         EmptyL -> Nothing
-        Chunk _ t :< rest -> case T.findIndex test t of
-            Nothing -> findIndex' rest
+        Chunk l t :< rest -> case T.findIndex test t of
+            Nothing -> (l +) `fmap` findIndex' rest
             result -> result
 
 findIndexEnd :: (Char -> Bool) -> Rope -> Maybe Int
@@ -186,7 +187,14 @@ takeWhileEnd f = Rope . takeWhileEnd' . fromRope
                 F.singleton $ Chunk l' t'
 
 lines :: Rope -> [Rope]
-lines = map packText . T.lines . unpackText
+lines r
+    | Ebitor.Rope.null r = []
+    | otherwise = case findIndex (== '\n') r of
+        Just i ->
+            let (a, b) = Ebitor.Rope.splitAt (i + 1) r
+                Just (a', _) = unsnoc a
+            in  a':(Ebitor.Rope.lines b)
+        Nothing -> [r]
 
 unlines :: [Rope] -> Rope
 unlines [] = empty

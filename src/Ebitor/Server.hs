@@ -256,6 +256,11 @@ getSizedUI sess = W.setRect focusedWin displayRect
 getScreen :: Session -> Response
 getScreen sess = Screen $ W.mapWindow truncateWindowEditor $ getSizedUI sess
 
+focusedWindowSize :: Session -> (Int, Int)
+focusedWindowSize s =
+    let ContentWindow { cwRect = Just (W.Rect _ _ w h) } = W.getFocusedWindow (getSizedUI s)
+    in  (w, h)
+
 onCursorMove :: Session -> Session
 onCursorMove sess =
     if fstLine == firstLine e then
@@ -371,6 +376,16 @@ normalMode [EvKey (KChar 'G') []] = returnClear . updateEditor cursorToBottom
 normalMode [EvKey (KChar '0') []] = returnClear . updateEditor cursorToBOL
 normalMode [EvKey (KChar '^') []] = returnClear . updateEditor cursorToBOL'
 normalMode [EvKey (KChar '$') []] = returnClear . updateEditor cursorToEOL
+normalMode [EvKey KPageDown []] = \s ->
+    let height = snd $ focusedWindowSize s
+    in  returnClear $ updateEditor (cursorMove $ updateCursor height) s
+  where
+    updateCursor height (R.Cursor (ln, col)) = R.Cursor (ln + height - 1, col)
+normalMode [EvKey KPageUp []] = \s ->
+    let height = snd $ focusedWindowSize s
+    in  returnClear $ updateEditor (cursorMove $ updateCursor height) s
+  where
+    updateCursor height (R.Cursor (ln, col)) = R.Cursor (ln - height + 1, col)
 normalMode [EvKey (KChar 'w') [MCtrl], EvKey (KChar 'h') mods]
     | mods == [MCtrl] || mods == [] = \s ->
         returnClear $ s { editors = W.focusPrev (editors s) }

@@ -1,24 +1,20 @@
 
-# Bring this back if we need to use yi-rope
-# build:
-# 	stack build \
-# 		--extra-include-dirs=/usr/local/opt/icu4c/include \
-# 		--extra-lib-dirs=/usr/local/opt/icu4c/lib
+.PHONY: build eb eb-profile eb-server eb-server-profile test
 
 build:
-	stack build
+	stack build --executable-profiling
 
 eb: build
 	stack exec eb
 
-build-profile:
-	stack build --executable-profiling
-
-eb-profile: build-profile
+eb-profile: build
 	stack exec eb-profile
 
 eb-server: build
 	stack exec eb-server
 
-eb-server-profile: build-profile
+eb-server-profile: build
 	stack exec eb-server-profile
+
+test:
+	stack test --executable-profiling

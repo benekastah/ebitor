@@ -30,6 +30,7 @@ module Ebitor.Edit
 import Data.Array((!))
 import Data.Char
 import GHC.Generics
+import qualified Data.Sequence as S
 
 import Data.Aeson (FromJSON, ToJSON)
 
@@ -72,10 +73,9 @@ newEditor = Editor { filePath = Nothing
                    }
 
 truncateEditor :: Editor -> (Int, Int) -> TruncatedEditor
-truncateEditor e (w, h) = TruncatedEditor $ e { rope = R.slice r 0 end }
+truncateEditor e (w, h) = TruncatedEditor $ e { rope = r }
   where
-    r = R.unlines $ drop (firstLine e - 1) (R.lines $ rope e)
-    end = fst $ R.positionForCursor r (Cursor (h, w + 1))
+    r = R.unlinesSeq $ S.take h $ S.drop (firstLine e - 1) (R.linesSeq $ rope e)
 
 editorIndex = positionIndex . position
 editorCursor = positionCursor . position

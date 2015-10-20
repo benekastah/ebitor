@@ -9,6 +9,7 @@ import Data.List (foldl')
 import Data.Maybe
 import Data.Monoid
 import Data.String (IsString, fromString)
+import qualified Data.Sequence as S
 
 import Data.Aeson
 import Data.FingerTree hiding (empty, null)
@@ -186,15 +187,37 @@ takeWhileEnd f = Rope . takeWhileEnd' . fromRope
             else
                 F.singleton $ Chunk l' t'
 
+takeLine :: Rope -> (Rope, Rope)
+takeLine r = takeLine' F.empty (fromRope r)
+  where
+    takeLine' ln r = case viewl r of
+        EmptyL -> (Rope ln, Rope r)
+        chunk@(Chunk _ t) :< rest -> if sNumLines (F.measure chunk) > 0 then
+            let (tLn, tRest) = T.break (=='\n') t
+                ln' = case tLn of
+                    "" -> ln
+                    _ -> ln |> textToChunk tLn
+                rest' = case T.drop 1 tRest of
+                    "" -> rest
+                    tRest' -> textToChunk tRest' <| rest
+            in  (Rope ln', Rope rest')
+        else
+            takeLine' (ln |> chunk) rest
+
+linesSeq :: Rope -> S.Seq Rope
+linesSeq r = linesSeq' S.empty r
+  where
+    linesSeq' seq r
+        | Ebitor.Rope.null r = seq
+        | otherwise =
+            let (ln, r') = takeLine r
+            in  linesSeq' (seq S.|> ln) r'
+
 lines :: Rope -> [Rope]
-lines r
-    | Ebitor.Rope.null r = []
-    | otherwise = case findIndex (== '\n') r of
-        Just i ->
-            let (a, b) = Ebitor.Rope.splitAt (i + 1) r
-                Just (a', _) = unsnoc a
-            in  a':(Ebitor.Rope.lines b)
-        Nothing -> [r]
+lines r = toList $ linesSeq r
+
+unlinesSeq :: S.Seq Rope -> Rope
+unlinesSeq seq = Ebitor.Rope.unlines $ toList seq
 
 unlines :: [Rope] -> Rope
 unlines [] = empty

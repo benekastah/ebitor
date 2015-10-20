@@ -15,6 +15,3 @@ eb-server: build
 
 eb-server-profile: build
 	stack exec eb-server-profile
-
-test:
-	stack test --executable-profiling

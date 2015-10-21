@@ -192,14 +192,16 @@ takeLine r = takeLine' F.empty (fromRope r)
   where
     takeLine' ln r = case viewl r of
         EmptyL -> (Rope ln, Rope r)
-        chunk@(Chunk _ t) :< rest -> if sNumLines (F.measure chunk) > 0 then
+        chunk@(Chunk l t) :< rest -> if sNumLines (F.measure chunk) > 0 then
             let (tLn, tRest) = T.break (=='\n') t
                 ln' = case tLn of
                     "" -> ln
                     _ -> ln |> textToChunk tLn
                 rest' = case T.drop 1 tRest of
                     "" -> rest
-                    tRest' -> textToChunk tRest' <| rest
+                    -- Since I think tLn will often be shorter than tRest, this
+                    -- should be faster than textToChunk
+                    tRest' -> Chunk (l - T.length tLn - 1) tRest' <| rest
             in  (Rope ln', Rope rest')
         else
             takeLine' (ln |> chunk) rest
@@ -233,18 +235,18 @@ snoc :: Rope -> Char -> Rope
 snoc r ch = insert r (Ebitor.Rope.length r) ch
 
 uncons :: Rope -> Maybe (Char, Rope)
-uncons r
-    | Ebitor.Rope.null r = Nothing
-    | otherwise =
-        let (a, b) = Ebitor.Rope.splitAt 1 r
-        in  Just (head (unpack a), b)
+uncons r = case viewl (fromRope r) of
+    EmptyL -> Nothing
+    Chunk l t :< rest -> case T.uncons t of
+        Just (ch, t') -> Just (ch, Rope (Chunk (l - 1) t' <| rest))
+        Nothing -> uncons (Rope rest)
 
 unsnoc :: Rope -> Maybe (Rope, Char)
-unsnoc r
-    | Ebitor.Rope.null r = Nothing
-    | otherwise =
-        let (a, b) = Ebitor.Rope.splitAt (Ebitor.Rope.length r - 1) r
-        in  Just (a, head (unpack b))
+unsnoc r = case viewr (fromRope r) of
+    EmptyR -> Nothing
+    rest :> Chunk l t -> case T.uncons $ T.reverse t of
+        Just (ch, t') -> Just (Rope (rest |> Chunk (l - 1) (T.reverse t')), ch)
+        Nothing -> unsnoc (Rope rest)
 
 insert :: Rope -> Int -> Char -> Rope
 insert r i = insertString r i . pure
@@ -309,23 +311,27 @@ splitBeforeLine r i =
     in  (Rope a, Rope b)
 
 advanceCursor :: Cursor -> Cursor -> Rope -> Rope -> (Cursor, Rope, Rope)
-advanceCursor target@(Cursor (l, c)) curs@(Cursor (curLn, curCol)) prefix r
-    | curs >= target = (curs, prefix, r)
+advanceCursor target@(Cursor (targetLn, targetCol)) curs@(Cursor (curLn, curCol)) prefix r
+    | curs >= target || Ebitor.Rope.null r = (curs, prefix, r)
+    | curLn < targetLn && numLines r > 0 =
+        let (ln, r') = takeLine r
+            prefix' = snoc (Ebitor.Rope.append prefix ln) '\n'
+        in  advanceCursor target (Cursor (curLn + 1, 1)) prefix' r'
     | otherwise = case uncons r of
         Just (ch, r') ->
             let curLn' = curLn + charHeight ch
                 curCol' = if curLn' /= curLn then 1 else curCol + charWidth ch
                 prefix' = snoc prefix ch
                 curs' = Cursor (curLn', curCol')
-            in  if curLn' < l then
+            in  if curLn' < targetLn then
                 advanceCursor target (Cursor (curLn', curCol')) prefix' r'
-            else if curLn' == l && curCol' < c then
+            else if curLn' == targetLn && curCol' < targetCol then
                 advanceCursor target curs' prefix' r'
-            else if curLn == l && curLn' /= l then
+            else if curLn == targetLn && curLn' /= targetLn then
                 (curs, prefix, r)
             else
                 (curs', prefix', r')
-        Nothing -> (curs, prefix, r)
+        Nothing -> undefined
 
 positionForCursor :: Rope -> Cursor -> Position
 positionForCursor r target@(Cursor (l, c))

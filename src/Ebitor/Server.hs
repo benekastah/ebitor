@@ -40,7 +40,6 @@ import qualified Data.ByteString.Lazy as B hiding (pack)
 import qualified Data.Text as T
 import qualified Data.Text.Lazy as TL
 import qualified Data.Text.Lazy.Encoding as TL
-import qualified Text.Regex.TDFA as Regex
 
 import Ebitor.Command hiding (commander)
 import Ebitor.Edit
@@ -51,6 +50,7 @@ import Ebitor.Window hiding (focus, map)
 import qualified Ebitor.Command as C
 import qualified Ebitor.Rope as R
 import qualified Ebitor.Rope.Cursor as R
+import qualified Ebitor.Rope.Regex as R
 import qualified Ebitor.Window as W
 
 
@@ -88,6 +88,7 @@ data Session = Session
                , clientSocket :: Socket
                , lastMessage :: Maybe Message
                , displaySize :: (Int, Int)
+               , currentSearch :: Maybe R.Regex
                }
 
 newSession :: Socket -> Session
@@ -100,6 +101,7 @@ newSession sock = Session { editors = W.focus win win
                           , clientSocket = sock
                           , lastMessage = Nothing
                           , displaySize = (0, 0)
+                          , currentSearch = Nothing
                           }
   where
     win = window (WEditor newEditor) Nothing
@@ -360,6 +362,17 @@ handleCommand (SplitWindow o fname) s = do
     case fname of
         Just f -> handleCommand (EditFile f) s'
         Nothing -> return s'
+handleCommand (Search pattern) s =
+    let regex = case pattern of
+                Just p -> R.compileDefault $ R.packText p
+                Nothing -> case currentSearch s of
+                    Just r -> Right r
+                    Nothing -> Left "No pattern to search for"
+    in  case regex of
+        Left err -> return $ s { lastMessage = Just $ ErrorMessage $ T.pack err }
+        Right regex ->
+            return $ updateEditor (cursorToNextMatch regex)
+                                  (s { currentSearch = Just regex })
 
 returnClear :: Session -> IO Session
 returnClear = return . clearKeyBuffer
@@ -376,6 +389,7 @@ normalMode [EvKey (KChar 'G') []] = returnClear . updateEditor cursorToBottom
 normalMode [EvKey (KChar '0') []] = returnClear . updateEditor cursorToBOL
 normalMode [EvKey (KChar '^') []] = returnClear . updateEditor cursorToBOL'
 normalMode [EvKey (KChar '$') []] = returnClear . updateEditor cursorToEOL
+normalMode [EvKey (KChar 'n') []] = handleCommand (Search Nothing) . clearKeyBuffer
 normalMode [EvKey KPageDown []] = \s ->
     let height = snd $ focusedWindowSize s
     in  returnClear $ updateEditor (cursorMove $ updateCursor height) s

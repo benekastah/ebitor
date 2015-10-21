@@ -11,6 +11,8 @@ module Ebitor.Edit
     , cursorToBOL'
     , cursorToBottom
     , cursorToEOL
+    , cursorToNextMatch
+    , cursorToPrevMatch
     , cursorToTop
     , cursorUp
     , cursorWordLeft

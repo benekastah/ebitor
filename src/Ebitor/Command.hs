@@ -39,6 +39,7 @@ data Command = CommandSequence [Command]
              | Disconnect
              | Echo Message
              | EditFile FilePath
+             | Search (Maybe T.Text)
              | SendKeys [Event]
              | SplitWindow W.Orientation (Maybe FilePath)
              | UpdateDisplaySize (Int, Int)
@@ -125,6 +126,8 @@ commander = Commander { actionMap = cmds
            , ("echoerr", echoErr)
            , ("edit", edit)
            , ("quit", quit)
+           , ("search", search)
+           , ("s", search)
            , ("send-keys", sendKeys)
            , ("split", split W.Horizontal)
            , ("vsplit", split W.Vertical)
@@ -171,3 +174,8 @@ commander = Commander { actionMap = cmds
     split o [CmdString msg] = Right $ SplitWindow o (Just $ T.unpack msg)
     split o [] = Right $ SplitWindow o Nothing
     split _ _  = arityError
+
+    search :: Action
+    search [CmdString pattern] = Right $ Search (Just pattern)
+    search [] = Right $ Search Nothing
+    search _ = arityError

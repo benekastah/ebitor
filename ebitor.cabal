@@ -67,13 +67,13 @@ executable eb-server
 executable eb
     hs-source-dirs:      app
     main-is:             Main.hs
---    ghc-options:         -threaded -rtsopts -with-rtsopts=-N
+    ghc-options:         -threaded -rtsopts -with-rtsopts=-N
 -- Profiling:
-    ghc-options:         -threaded
-                         -O2
-                         -rtsopts
-                         -fprof-auto
-                         "-with-rtsopts=-N -p -s -h -i0.1"
+--    ghc-options:         -threaded
+--                         -O2
+--                         -rtsopts
+--                         -fprof-auto
+--                         "-with-rtsopts=-N -p -s -h -i0.1"
     build-depends:       base
                        , aeson == 0.9.0.*
                        , bytestring

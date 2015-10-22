@@ -362,17 +362,22 @@ handleCommand (SplitWindow o fname) s = do
     case fname of
         Just f -> handleCommand (EditFile f) s'
         Nothing -> return s'
-handleCommand (Search pattern) s =
+handleCommand (Search pattern) s = return $ runSearch False pattern s
+handleCommand (SearchReverse pattern) s = return $ runSearch True pattern s
+
+runSearch :: Bool -> Maybe T.Text -> Session -> Session
+runSearch rev pattern s =
     let regex = case pattern of
                 Just p -> R.compileDefault $ R.packText p
                 Nothing -> case currentSearch s of
                     Just r -> Right r
                     Nothing -> Left "No pattern to search for"
+        searchFn = if rev then cursorToPrevMatch else cursorToNextMatch
     in  case regex of
-        Left err -> return $ s { lastMessage = Just $ ErrorMessage $ T.pack err }
+        Left err -> s { lastMessage = Just $ ErrorMessage $ T.pack err }
         Right regex ->
-            return $ updateEditor (cursorToNextMatch regex)
-                                  (s { currentSearch = Just regex })
+            updateEditor (searchFn regex)
+                         (s { currentSearch = Just regex })
 
 returnClear :: Session -> IO Session
 returnClear = return . clearKeyBuffer
@@ -389,7 +394,8 @@ normalMode [EvKey (KChar 'G') []] = returnClear . updateEditor cursorToBottom
 normalMode [EvKey (KChar '0') []] = returnClear . updateEditor cursorToBOL
 normalMode [EvKey (KChar '^') []] = returnClear . updateEditor cursorToBOL'
 normalMode [EvKey (KChar '$') []] = returnClear . updateEditor cursorToEOL
-normalMode [EvKey (KChar 'n') []] = handleCommand (Search Nothing) . clearKeyBuffer
+normalMode [EvKey (KChar 'n') []] = returnClear . runSearch False Nothing
+normalMode [EvKey (KChar 'N') []] = returnClear . runSearch True Nothing
 normalMode [EvKey KPageDown []] = \s ->
     let height = snd $ focusedWindowSize s
     in  returnClear $ updateEditor (cursorMove $ updateCursor height) s

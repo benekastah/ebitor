@@ -1,8 +1,10 @@
 
 .PHONY: build eb eb-profile eb-server eb-server-profile test
 
+# build:
+# 	stack build --executable-profiling
 build:
-	stack build --executable-profiling
+	stack build
 
 eb: build
 	stack exec eb

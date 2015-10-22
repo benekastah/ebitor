@@ -40,6 +40,7 @@ data Command = CommandSequence [Command]
              | Echo Message
              | EditFile FilePath
              | Search (Maybe T.Text)
+             | SearchReverse (Maybe T.Text)
              | SendKeys [Event]
              | SplitWindow W.Orientation (Maybe FilePath)
              | UpdateDisplaySize (Int, Int)
@@ -126,8 +127,9 @@ commander = Commander { actionMap = cmds
            , ("echoerr", echoErr)
            , ("edit", edit)
            , ("quit", quit)
-           , ("search", search)
-           , ("s", search)
+           , ("search", search False)
+           , ("s", search False)
+           , ("search-back", search True)
            , ("send-keys", sendKeys)
            , ("split", split W.Horizontal)
            , ("vsplit", split W.Vertical)
@@ -175,7 +177,10 @@ commander = Commander { actionMap = cmds
     split o [] = Right $ SplitWindow o Nothing
     split _ _  = arityError
 
-    search :: Action
-    search [CmdString pattern] = Right $ Search (Just pattern)
-    search [] = Right $ Search Nothing
-    search _ = arityError
+    search :: Bool -> Action
+    search rev ls = case ls of
+        [CmdString pattern] -> Right $ mkSearch $ Just pattern
+        [] -> Right $ mkSearch Nothing
+        _ -> arityError
+      where
+        mkSearch = if rev then SearchReverse else Search
